@@ -1,5 +1,5 @@
 import { convertFileSrc } from "@tauri-apps/api/core";
-import { useMount, useUnmount } from "ahooks";
+import { useEventListener, useMount } from "ahooks";
 import {
   type FC,
   type MouseEvent as ReactMouseEvent,
@@ -53,6 +53,7 @@ const normalizeRect = (from: Point, to: Point): Rect => {
 /**
  * 截屏取字覆盖层:显示冻结帧,拖拽框选后把 CSS 像素选区提交给 Rust。
  * 每个显示器一个本页面实例;物理像素换算在 Rust 侧完成。
+ * 拖拽中状态以 `originRef` 为唯一真值(不进 state,拖拽本身不需要重渲染)。
  */
 const Snip: FC = () => {
   const { t } = useTranslation("snip");
@@ -61,13 +62,6 @@ const Snip: FC = () => {
   const submittedRef = useRef(false);
   const [frameSrc, setFrameSrc] = useState<string>();
   const [rect, setRect] = useState<Rect>();
-  const [dragging, setDragging] = useState(false);
-
-  const handleKeyDown = (event: KeyboardEvent) => {
-    if (event.key === "Escape") {
-      void snipCancel();
-    }
-  };
 
   useMount(() => {
     const load = async () => {
@@ -83,11 +77,12 @@ const Snip: FC = () => {
     };
 
     void load();
-    window.addEventListener("keydown", handleKeyDown);
   });
 
-  useUnmount(() => {
-    window.removeEventListener("keydown", handleKeyDown);
+  useEventListener("keydown", (event) => {
+    if (event.key === "Escape") {
+      void snipCancel();
+    }
   });
 
   const handleFrameLoaded = () => {
@@ -109,14 +104,13 @@ const Snip: FC = () => {
       return;
     }
     originRef.current = { x: event.clientX, y: event.clientY };
-    setDragging(true);
-    setRect(undefined);
+    setRect(void 0);
   };
 
   const handleMouseMove = (event: ReactMouseEvent) => {
     const origin = originRef.current;
 
-    if (!dragging || !origin) {
+    if (!origin) {
       return;
     }
     setRect(normalizeRect(origin, { x: event.clientX, y: event.clientY }));
@@ -125,10 +119,9 @@ const Snip: FC = () => {
   const handleMouseUp = (event: ReactMouseEvent) => {
     const origin = originRef.current;
 
-    if (event.button !== 0 || !dragging || !origin) {
+    if (event.button !== 0 || !origin) {
       return;
     }
-    setDragging(false);
     originRef.current = null;
 
     const selection = normalizeRect(origin, {
@@ -137,7 +130,7 @@ const Snip: FC = () => {
     });
 
     if (selection.width < MIN_DRAG_PX || selection.height < MIN_DRAG_PX) {
-      setRect(undefined);
+      setRect(void 0);
       return;
     }
     if (submittedRef.current) {
@@ -148,12 +141,11 @@ const Snip: FC = () => {
   };
 
   const handleMouseLeave = () => {
-    if (!dragging) {
+    if (!originRef.current) {
       return;
     }
-    setDragging(false);
     originRef.current = null;
-    setRect(undefined);
+    setRect(void 0);
   };
 
   return (

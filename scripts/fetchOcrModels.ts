@@ -18,6 +18,7 @@ import { fileURLToPath } from "node:url";
  *
  * 完整性:按精确字节数校验(与 src-tauri/src/ocr/packs.rs 同一策略),
  * 先写 .part 再改名——中断留下的残缺文件不会被当作已下载,更不会被打进安装包。
+ * 升级模型版本时,RELEASE_BASE 与字节数需与 packs.rs 的 GITHUB_BASE/PACKS 同步修改。
  */
 const RELEASE_BASE =
   "https://github.com/GreatV/oar-ocr/releases/download/v0.3.0";

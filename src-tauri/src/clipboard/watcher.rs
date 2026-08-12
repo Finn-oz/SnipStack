@@ -141,6 +141,12 @@ pub async fn persist_and_notify(
         }
     }
     let result = upsert_item(pool, &item_to_write).await?;
+    // 图片条目交给后台 OCR 建全文索引。挂在这里(而非 watcher 回调)是因为本函数是
+    // 监听 / 手动重读 / 旧版导入等所有入库路径的汇聚点,任何路径的图片都同权被索引;
+    // 设置开关、幂等标记与 in-flight 去重都在 schedule 内部处理。
+    if item_to_write.kind == ClipboardKind::Image {
+        crate::ocr::backfill::schedule(app, result.id.clone(), item_to_write.content.clone());
+    }
     sound::maybe_play_copy(app);
     if let Err(err) = app.emit(
         CLIPBOARD_UPDATED_EVENT,
@@ -343,14 +349,8 @@ impl ClipboardHandler for ClipboardChangeHandler {
         let app = self.app.clone();
         tauri::async_runtime::spawn(async move {
             let pool = app.state::<crate::db::DatabaseState>().pool().await;
-            match persist_and_notify(&app, &pool, &item, source_app.as_ref()).await {
-                Ok(result) => {
-                    // 复制进来的图片交给后台 OCR 补建全文索引(设置开启时)。
-                    if item.kind == ClipboardKind::Image {
-                        crate::ocr::backfill::schedule(&app, result.id, item.content.clone());
-                    }
-                }
-                Err(err) => log::error!("clipboard watcher: persist failed: {err}"),
+            if let Err(err) = persist_and_notify(&app, &pool, &item, source_app.as_ref()).await {
+                log::error!("clipboard watcher: persist failed: {err}");
             }
         });
     }

@@ -299,6 +299,23 @@ mod tests {
     }
 
     #[test]
+    fn validate_settings_rejects_snip_duplicating_other_shortcuts() {
+        let mut settings = Settings::default();
+        settings.shortcuts.snip = settings.shortcuts.open_clipboard.clone();
+
+        assert!(validate_settings(&settings).is_err());
+    }
+
+    #[test]
+    fn validate_settings_normalizes_before_comparing() {
+        let mut settings = Settings::default();
+        settings.shortcuts.open_clipboard = "Alt+S".into();
+        settings.shortcuts.snip = "alt + s".into();
+
+        assert!(validate_settings(&settings).is_err());
+    }
+
+    #[test]
     fn validate_settings_allows_empty_global_shortcuts() {
         let mut settings = Settings::default();
         settings.shortcuts.open_preference = String::new();

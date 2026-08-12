@@ -12,6 +12,7 @@
 //! 冻结帧含全屏内容,按敏感数据对待:每会话独立临时目录,confirm/cancel 即删,
 //! 应用启动时清扫整个根目录兜底(覆盖崩溃/强杀残留)。
 
+use anyhow::Context;
 use std::path::PathBuf;
 use std::sync::Mutex;
 
@@ -99,7 +100,7 @@ fn emit_done(app: &AppHandle, ok: bool, chars: usize, error: Option<String>) {
 pub fn start_snip(app: &AppHandle) -> Result<()> {
     {
         let state = app.state::<SnipState>();
-        let mut session = state.session.lock().expect("snip state poisoned");
+        let mut session = crate::core::sync::lock_unpoisoned(&state.session);
         if session.is_some() {
             return Ok(());
         }
@@ -125,42 +126,39 @@ pub fn start_snip(app: &AppHandle) -> Result<()> {
 fn capture_frames(app: &AppHandle) -> Result<()> {
     let dir = {
         let state = app.state::<SnipState>();
-        let session = state.session.lock().expect("snip state poisoned");
+        let session = crate::core::sync::lock_unpoisoned(&state.session);
         session
             .as_ref()
             .map(|s| s.dir.clone())
-            .ok_or_else(|| AppError::Other(anyhow::anyhow!("snip session cancelled")))?
+            .context("snip session cancelled")?
     };
 
-    let monitors = xcap::Monitor::all()
-        .map_err(|err| AppError::Other(anyhow::anyhow!("enumerate monitors: {err}")))?;
+    let monitors = xcap::Monitor::all().context("enumerate monitors")?;
     if monitors.is_empty() {
         return Err(AppError::Other(anyhow::anyhow!("no monitor found")));
     }
-    std::fs::create_dir_all(&dir)
-        .map_err(|err| AppError::Other(anyhow::anyhow!("create snip temp dir: {err}")))?;
+    std::fs::create_dir_all(&dir).context("create snip temp dir")?;
 
     let mut frames = Vec::with_capacity(monitors.len());
     let mut geometries = Vec::with_capacity(monitors.len());
     for (index, monitor) in monitors.iter().enumerate() {
         let image = monitor
             .capture_image()
-            .map_err(|err| AppError::Other(anyhow::anyhow!("capture monitor {index}: {err}")))?;
+            .with_context(|| format!("capture monitor {index}"))?;
         let (x, y) = (monitor_x(monitor)?, monitor_y(monitor)?);
         let scale_factor = monitor_scale(monitor)?;
         let (width, height) = (image.width(), image.height());
 
         // JPEG 只用于覆盖层展示(编码远快于 PNG);OCR 用内存里的原始 RGBA。
-        // image crate 的 JPEG 编码只接受 L8/Rgb8,RGBA 帧必须先转 RGB。
+        // image crate 的 JPEG 编码只接受 L8/Rgb8,RGBA 帧必须先转 RGB;
+        // encode_image 自推导尺寸与颜色类型,避免手工四参搭配再出 Rgba8 类错误。
         let rgb: RgbImage = image.convert();
         let preview_path = dir.join(format!("frame-{index}.jpg"));
-        let file = std::fs::File::create(&preview_path).map_err(|err| {
-            AppError::Other(anyhow::anyhow!("create frame preview {index}: {err}"))
-        })?;
+        let file = std::fs::File::create(&preview_path)
+            .with_context(|| format!("create frame preview {index}"))?;
         image::codecs::jpeg::JpegEncoder::new_with_quality(std::io::BufWriter::new(file), 85)
-            .encode(rgb.as_raw(), width, height, image::ExtendedColorType::Rgb8)
-            .map_err(|err| AppError::Other(anyhow::anyhow!("encode frame preview: {err}")))?;
-        drop(rgb);
+            .encode_image(&rgb)
+            .context("encode frame preview")?;
 
         frames.push(SnipFrame {
             image,
@@ -173,7 +171,7 @@ fn capture_frames(app: &AppHandle) -> Result<()> {
     let focus_index = focused_monitor_index(app, &geometries);
     {
         let state = app.state::<SnipState>();
-        let mut session = state.session.lock().expect("snip state poisoned");
+        let mut session = crate::core::sync::lock_unpoisoned(&state.session);
         let Some(current) = session.as_mut() else {
             // 捕获期间被取消:目录清理由 cancel 完成,这里静默结束。
             return Ok(());
@@ -194,7 +192,7 @@ fn capture_frames(app: &AppHandle) -> Result<()> {
             }
         }
     })
-    .map_err(|err| AppError::Other(anyhow::anyhow!("dispatch overlay build: {err}")))?;
+    .context("dispatch overlay build")?;
     Ok(())
 }
 
@@ -241,14 +239,14 @@ fn build_overlay_window(
     .visible(false)
     .disable_drag_drop_handler()
     .build()
-    .map_err(|err| AppError::Other(anyhow::anyhow!("build snip overlay window: {err}")))?;
+    .context("build snip overlay window")?;
 
     window
         .set_position(PhysicalPosition::new(x, y))
-        .map_err(|err| AppError::Other(anyhow::anyhow!("position snip overlay: {err}")))?;
+        .context("position snip overlay")?;
     window
         .set_size(PhysicalSize::new(width, height))
-        .map_err(|err| AppError::Other(anyhow::anyhow!("size snip overlay: {err}")))?;
+        .context("size snip overlay")?;
     Ok(())
 }
 
@@ -258,13 +256,11 @@ pub fn overlay_ready(app: &AppHandle, monitor: usize) -> Result<()> {
     let Some(window) = app.get_webview_window(&label) else {
         return Ok(());
     };
-    window
-        .show()
-        .map_err(|err| AppError::Other(anyhow::anyhow!("show snip overlay: {err}")))?;
+    window.show().context("show snip overlay")?;
 
     let focus_index = {
         let state = app.state::<SnipState>();
-        let session = state.session.lock().expect("snip state poisoned");
+        let session = crate::core::sync::lock_unpoisoned(&state.session);
         session.as_ref().map(|s| s.focus_index).unwrap_or(0)
     };
     if monitor == focus_index {
@@ -276,14 +272,14 @@ pub fn overlay_ready(app: &AppHandle, monitor: usize) -> Result<()> {
 /// 覆盖层冻结帧路径,供前端 convertFileSrc 展示。
 pub fn frame_preview_path(app: &AppHandle, monitor: usize) -> Result<String> {
     let state = app.state::<SnipState>();
-    let session = state.session.lock().expect("snip state poisoned");
+    let session = crate::core::sync::lock_unpoisoned(&state.session);
     let frames = session
         .as_ref()
         .map(|s| &s.frames)
-        .ok_or_else(|| AppError::Other(anyhow::anyhow!("no active snip session")))?;
+        .context("no active snip session")?;
     let frame = frames
         .get(monitor)
-        .ok_or_else(|| AppError::Other(anyhow::anyhow!("snip monitor {monitor} out of range")))?;
+        .with_context(|| format!("snip monitor {monitor} out of range"))?;
     Ok(frame.preview_path.to_string_lossy().into_owned())
 }
 
@@ -292,7 +288,7 @@ pub fn cancel_snip(app: &AppHandle) -> Result<()> {
     destroy_overlays(app);
     let dir = {
         let state = app.state::<SnipState>();
-        let mut session = state.session.lock().expect("snip state poisoned");
+        let mut session = crate::core::sync::lock_unpoisoned(&state.session);
         session.take().map(|s| s.dir)
     };
     if let Some(dir) = dir {
@@ -317,10 +313,8 @@ pub async fn confirm_snip(app: AppHandle, selection: SnipSelection) -> Result<()
     // 取出会话并销毁覆盖层,先把屏幕还给用户;临时目录立即删除。
     let (frame, dir) = {
         let state = app.state::<SnipState>();
-        let mut session = state.session.lock().expect("snip state poisoned");
-        let taken = session
-            .take()
-            .ok_or_else(|| AppError::Other(anyhow::anyhow!("no active snip session")))?;
+        let mut session = crate::core::sync::lock_unpoisoned(&state.session);
+        let taken = session.take().context("no active snip session")?;
         let mut frames = taken.frames;
         let frame =
             (selection.monitor < frames.len()).then(|| frames.swap_remove(selection.monitor));
@@ -433,7 +427,7 @@ fn encode_png(image: &RgbaImage) -> Result<Vec<u8>> {
             image.height(),
             image::ExtendedColorType::Rgba8,
         )
-        .map_err(|err| AppError::Other(anyhow::anyhow!("encode snip png: {err}")))?;
+        .context("encode snip png")?;
     Ok(png)
 }
 
@@ -492,35 +486,26 @@ async fn save_history_item(
     let pool = app.state::<crate::db::DatabaseState>().pool().await;
     let result = clipboard::persist_and_notify(app, &pool, &item, None).await?;
     if result.deduplicated && !text.is_empty() {
-        // 同图重截:用非空结果补写/刷新 OCR 文本(UPDATE 触发 FTS 触发器重建索引)。
-        // 空结果不写,避免语言包不匹配等场景抹掉已有索引。
-        sqlx::query("UPDATE clipboard_items SET search_text = ? WHERE id = ?")
-            .bind(text)
-            .bind(&result.id)
-            .execute(&pool)
-            .await
-            .map_err(|err| AppError::Other(anyhow::anyhow!("update snip search_text: {err}")))?;
+        // 同图重截:用非空结果补写/刷新 OCR 文本(空结果不写,避免语言包不匹配
+        // 等场景抹掉已有索引;语义约束见仓储函数文档)。
+        crate::db::items::update_item_search_text(&pool, &result.id, text).await?;
     }
     Ok(())
 }
 
 fn monitor_x(monitor: &xcap::Monitor) -> Result<i32> {
-    monitor
-        .x()
-        .map_err(|err| AppError::Other(anyhow::anyhow!("monitor x: {err}")))
+    Ok(monitor.x().context("monitor x")?)
 }
 
 fn monitor_y(monitor: &xcap::Monitor) -> Result<i32> {
-    monitor
-        .y()
-        .map_err(|err| AppError::Other(anyhow::anyhow!("monitor y: {err}")))
+    Ok(monitor.y().context("monitor y")?)
 }
 
 fn monitor_scale(monitor: &xcap::Monitor) -> Result<f64> {
-    monitor
+    Ok(monitor
         .scale_factor()
         .map(f64::from)
-        .map_err(|err| AppError::Other(anyhow::anyhow!("monitor scale factor: {err}")))
+        .context("monitor scale factor")?)
 }
 
 #[cfg(test)]
@@ -567,7 +552,7 @@ mod tests {
         let rgb: RgbImage = rgba.convert();
         let mut out = Vec::new();
         image::codecs::jpeg::JpegEncoder::new_with_quality(&mut out, 85)
-            .encode(rgb.as_raw(), 64, 48, image::ExtendedColorType::Rgb8)
+            .encode_image(&rgb)
             .expect("jpeg encode rgb frame");
         assert!(!out.is_empty());
     }

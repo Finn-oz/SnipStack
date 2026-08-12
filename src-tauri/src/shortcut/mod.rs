@@ -263,18 +263,23 @@ fn handle_event(app: &AppHandle, action: &'static str, event: ShortcutEvent) {
     if !matches!(event.state(), ShortcutState::Pressed) {
         return;
     }
-    if action == "snip" {
-        if let Err(err) = crate::capture::start_snip(app) {
-            log::warn!("start snip via shortcut failed: {err}");
+    // 单一分发点:action → 行为;新动作在此加分支,勿再引入平行的 if 链。
+    match action {
+        "snip" => {
+            if let Err(err) = crate::capture::start_snip(app) {
+                log::warn!("start snip via shortcut failed: {err}");
+            }
         }
-        return;
-    }
-    let label = match action {
-        "open_clipboard" => CLIPBOARD_WINDOW_LABEL,
-        "open_preference" => PREFERENCE_WINDOW_LABEL,
-        _ => return,
-    };
-    if let Err(err) = window::toggle_window(app, label) {
-        log::warn!("toggle window via shortcut {action} failed: {err}");
+        "open_clipboard" | "open_preference" => {
+            let label = if action == "open_clipboard" {
+                CLIPBOARD_WINDOW_LABEL
+            } else {
+                PREFERENCE_WINDOW_LABEL
+            };
+            if let Err(err) = window::toggle_window(app, label) {
+                log::warn!("toggle window via shortcut {action} failed: {err}");
+            }
+        }
+        _ => {}
     }
 }

@@ -6,6 +6,7 @@ import type {
   StorageLocation,
 } from "@/commands";
 import LanguageSwitcher from "@/components/LanguageSwitcher";
+import { OCR_BUILTIN_LANGUAGE_ID } from "@/constants/ocr";
 import type { Language, Settings } from "@/types/settings";
 import type {
   PreferenceSetting,
@@ -69,7 +70,7 @@ const PreferenceSettingControl: FC<PreferenceSettingControlProps> = (props) => {
           disabled={disabled}
           onChange={onChange}
           setting={setting}
-          value={String(value ?? "zhEn")}
+          value={String(value ?? OCR_BUILTIN_LANGUAGE_ID)}
         />
       );
     case "switch":

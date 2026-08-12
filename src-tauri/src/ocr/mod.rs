@@ -6,6 +6,7 @@
 pub mod backfill;
 pub mod packs;
 
+use anyhow::Context;
 use std::path::PathBuf;
 use std::sync::Mutex;
 
@@ -29,11 +30,27 @@ pub struct OcrLine {
 /// `Mutex` 同时串行化推理:桌面截屏场景不存在并发识别,简单优先。
 static ENGINE: Mutex<Option<(String, OAROCR)>> = Mutex::new(None);
 
-/// 丢弃缓存的引擎(语言包下载/删除后调用),下次识别按最新状态重建。
+/// 空闲淘汰:ONNX 会话 + ort arena 常驻 RSS 以百 MB 计,而这是常驻托盘应用。
+/// 每次识别递增世代并调度一个延时检查,若期间无新识别则释放引擎
+/// (懒加载重建成本 ~0.2s,对下一次热键触发无感)。
+static ENGINE_EPOCH: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+const ENGINE_IDLE_EVICT: std::time::Duration = std::time::Duration::from_secs(300);
+
+fn schedule_engine_eviction() {
+    use std::sync::atomic::Ordering;
+    let epoch = ENGINE_EPOCH.fetch_add(1, Ordering::Relaxed) + 1;
+    tauri::async_runtime::spawn(async move {
+        tokio::time::sleep(ENGINE_IDLE_EVICT).await;
+        if ENGINE_EPOCH.load(Ordering::Relaxed) == epoch {
+            invalidate_engine();
+            log::info!("ocr engine evicted after {:?} idle", ENGINE_IDLE_EVICT);
+        }
+    });
+}
+
+/// 丢弃缓存的引擎(语言包下载/删除、空闲淘汰时调用),下次识别按最新状态重建。
 pub(crate) fn invalidate_engine() {
-    *ENGINE
-        .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner()) = None;
+    *crate::core::sync::lock_unpoisoned(&ENGINE) = None;
 }
 
 /// 解析内置模型资源文件;dev 模式下即 `src-tauri/resources/ocr/`。
@@ -41,7 +58,7 @@ fn resource(app: &AppHandle, name: &str) -> Result<PathBuf> {
     let path = app
         .path()
         .resolve(format!("resources/ocr/{name}"), BaseDirectory::Resource)
-        .map_err(|err| AppError::Other(anyhow::anyhow!("resolve ocr resource {name}: {err}")))?;
+        .with_context(|| format!("resolve ocr resource {name}"))?;
     if !path.is_file() {
         return Err(AppError::Ocr(format!(
             "OCR 模型缺失: {name}(先执行 pnpm fetch:ocr-models)"
@@ -90,9 +107,7 @@ pub fn recognize(app: &AppHandle, image: &RgbaImage) -> Result<Vec<OcrLine>> {
         .unwrap_or_else(|| packs::BUILTIN_LANGUAGE_ID.to_owned());
     let (key, det, rec, dict) = engine_spec(app, &selected)?;
 
-    let mut guard = ENGINE
-        .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    let mut guard = crate::core::sync::lock_unpoisoned(&ENGINE);
     if guard.as_ref().map(|(k, _)| k != &key).unwrap_or(true) {
         let started = std::time::Instant::now();
         let engine = build_engine_from_paths(&det, &rec, &dict)?;
@@ -108,6 +123,8 @@ pub fn recognize(app: &AppHandle, image: &RgbaImage) -> Result<Vec<OcrLine>> {
         lines.len(),
         started.elapsed()
     );
+    drop(guard);
+    schedule_engine_eviction();
     Ok(lines)
 }
 

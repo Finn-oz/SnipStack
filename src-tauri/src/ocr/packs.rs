@@ -3,24 +3,35 @@
 //! 一个语言包 = 一个 rec ONNX 模型 + 对应字典(det 模型各语言共用内置的 ch mobile det)。
 //! 来源为 oar-ocr GitHub Releases(Apache-2.0,转换自 PaddleOCR 官方 PP-OCRv5 多语言模型),
 //! ModelScope 同名镜像作为备源(国内直连友好)。文件字节数精确已知,下载后按大小校验。
+//! 版本与字节数需与 scripts/fetchOcrModels.ts 的内置模型清单同步升级。
 //!
-//! 存放位置:`<app_local_data>/ocr-packs/<id>/`。属应用级缓存,不随用户数据目录迁移、
-//! 不进备份;删除后可随时重新下载。
+//! 存放位置见 [`crate::core::paths::ocr_packs_dir`]。
 
-use std::collections::HashSet;
 use std::path::PathBuf;
-use std::sync::{Mutex, OnceLock};
+use std::sync::OnceLock;
 use std::time::Duration;
 
+use anyhow::Context;
 use futures_util::StreamExt;
 use serde::Serialize;
-use tauri::{AppHandle, Emitter, Manager};
+use tauri::{AppHandle, Emitter};
 
+use crate::core::in_flight::InFlight;
 use crate::core::{AppError, Result};
 
-/// 正在下载中的包 id:同包并发下载会互踩同一 `.part` 文件,必须在 Rust 侧互斥
+/// 与前端 src/constants/events.ts 的 TAURI_EVENT.OCR_PACK_PROGRESS 一一对应。
+pub const PACK_PROGRESS_EVENT: &str = "ocr://pack-progress";
+
+/// 内置语言(随包分发,不可删除):简中/繁中/英文/日文/拼音,PP-OCRv5 ch mobile 单模型覆盖。
+/// 与前端 src/constants/ocr.ts 的 OCR_BUILTIN_LANGUAGE_ID 一一对应。
+pub const BUILTIN_LANGUAGE_ID: &str = "zhEn";
+
+const GITHUB_BASE: &str = "https://github.com/GreatV/oar-ocr/releases/download/v0.3.0";
+const MODELSCOPE_BASE: &str = "https://www.modelscope.cn/models/greatv/oar-ocr/resolve/master";
+
+/// 正在下载中的包:同包并发下载会互踩同一 `.part` 文件,必须在 Rust 侧互斥
 /// (前端的防重入随组件销毁失效,挡不住关闭设置页再重开的场景)。
-static IN_FLIGHT: Mutex<Option<HashSet<String>>> = Mutex::new(None);
+static IN_FLIGHT: InFlight = InFlight::new();
 
 /// 共享 HTTP 客户端:带连接/读取超时,网络僵死时下载会失败而非永久挂起。
 fn http_client() -> &'static reqwest::Client {
@@ -34,15 +45,6 @@ fn http_client() -> &'static reqwest::Client {
     })
 }
 
-/// 与前端 src/constants/events.ts 的 TAURI_EVENT.OCR_PACK_PROGRESS 一一对应。
-pub const PACK_PROGRESS_EVENT: &str = "ocr://pack-progress";
-
-/// 内置语言(随包分发,不可删除):简中/繁中/英文/日文/拼音,PP-OCRv5 ch mobile 单模型覆盖。
-pub const BUILTIN_LANGUAGE_ID: &str = "zhEn";
-
-const GITHUB_BASE: &str = "https://github.com/GreatV/oar-ocr/releases/download/v0.3.0";
-const MODELSCOPE_BASE: &str = "https://www.modelscope.cn/models/greatv/oar-ocr/resolve/master";
-
 pub struct LanguagePack {
     /// 稳定 id,进设置与目录名;前端据此取显示名文案。
     pub id: &'static str,
@@ -50,6 +52,12 @@ pub struct LanguagePack {
     pub rec_bytes: u64,
     pub dict_file: &'static str,
     pub dict_bytes: u64,
+}
+
+impl LanguagePack {
+    fn total_bytes(&self) -> u64 {
+        self.rec_bytes + self.dict_bytes
+    }
 }
 
 /// 首发语言包(字节数来自 oar-ocr 下载注册表,亦经 HTTP HEAD 实测核对)。
@@ -110,6 +118,18 @@ struct PackProgress {
     error: Option<String>,
 }
 
+fn emit_progress(app: &AppHandle, id: &str, received: u64, total: u64, error: Option<String>) {
+    let _ = app.emit(
+        PACK_PROGRESS_EVENT,
+        PackProgress {
+            id: id.to_owned(),
+            received,
+            total,
+            error,
+        },
+    );
+}
+
 fn find(id: &str) -> Result<&'static LanguagePack> {
     PACKS
         .iter()
@@ -118,12 +138,7 @@ fn find(id: &str) -> Result<&'static LanguagePack> {
 }
 
 fn packs_root(app: &AppHandle) -> Result<PathBuf> {
-    let dir = app
-        .path()
-        .app_local_data_dir()
-        .map_err(|err| AppError::Other(anyhow::anyhow!("resolve app_local_data_dir: {err}")))?
-        .join("ocr-packs");
-    Ok(dir)
+    crate::core::paths::ocr_packs_dir(app)
 }
 
 fn file_matches(path: &PathBuf, expected: u64) -> bool {
@@ -148,7 +163,7 @@ pub fn list(app: &AppHandle) -> Vec<PackStatus> {
         .map(|pack| PackStatus {
             id: pack.id.to_owned(),
             downloaded: resolve(app, pack.id).is_some(),
-            total_bytes: pack.rec_bytes + pack.dict_bytes,
+            total_bytes: pack.total_bytes(),
         })
         .collect()
 }
@@ -157,8 +172,7 @@ pub fn delete(app: &AppHandle, id: &str) -> Result<()> {
     let pack = find(id)?;
     let dir = packs_root(app)?.join(pack.id);
     if dir.is_dir() {
-        std::fs::remove_dir_all(&dir)
-            .map_err(|err| AppError::Other(anyhow::anyhow!("delete ocr pack {id}: {err}")))?;
+        std::fs::remove_dir_all(&dir).with_context(|| format!("delete ocr pack {id}"))?;
     }
     super::invalidate_engine();
     Ok(())
@@ -168,86 +182,42 @@ pub fn delete(app: &AppHandle, id: &str) -> Result<()> {
 /// **任何**失败路径都会 emit 带 error 的终态事件(前端据此收起进度条)。
 /// 同包已在下载中时直接返回,由进行中的任务继续广播进度。
 pub async fn download(app: &AppHandle, id: &str) -> Result<()> {
-    let result = download_guarded(app, id).await;
-    if let Err(err) = &result {
-        let _ = app.emit(
-            PACK_PROGRESS_EVENT,
-            PackProgress {
-                id: id.to_owned(),
-                received: 0,
-                total: PACKS
-                    .iter()
-                    .find(|pack| pack.id == id)
-                    .map(|pack| pack.rec_bytes + pack.dict_bytes)
-                    .unwrap_or(0),
-                error: Some(err.to_string()),
-            },
-        );
-    }
-    result
-}
-
-async fn download_guarded(app: &AppHandle, id: &str) -> Result<()> {
-    let pack = find(id)?;
-    {
-        let mut guard = IN_FLIGHT
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner());
-        if !guard
-            .get_or_insert_with(HashSet::new)
-            .insert(pack.id.to_owned())
-        {
-            // 已有任务在下载本包,其进度事件会继续到达前端。
-            return Ok(());
+    let pack = match find(id) {
+        Ok(pack) => pack,
+        Err(err) => {
+            emit_progress(app, id, 0, 0, Some(err.to_string()));
+            return Err(err);
         }
-    }
+    };
+    let total = pack.total_bytes();
+    let Some(_guard) = IN_FLIGHT.try_begin(pack.id) else {
+        return Ok(());
+    };
 
-    let result = async {
-        let dir = packs_root(app)?.join(pack.id);
-        std::fs::create_dir_all(&dir)
-            .map_err(|err| AppError::Other(anyhow::anyhow!("create ocr pack dir: {err}")))?;
-        let total = pack.rec_bytes + pack.dict_bytes;
-        download_inner(app, pack, &dir, total).await
-    }
-    .await;
-
-    let mut guard = IN_FLIGHT
-        .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner());
-    if let Some(set) = guard.as_mut() {
-        set.remove(pack.id);
+    let result = download_inner(app, pack, total).await;
+    if let Err(err) = &result {
+        emit_progress(app, pack.id, 0, total, Some(err.to_string()));
     }
     result
 }
 
-async fn download_inner(
-    app: &AppHandle,
-    pack: &LanguagePack,
-    dir: &std::path::Path,
-    total: u64,
-) -> Result<()> {
-    let mut received: u64 = 0;
+async fn download_inner(app: &AppHandle, pack: &LanguagePack, total: u64) -> Result<()> {
+    let dir = packs_root(app)?.join(pack.id);
+    std::fs::create_dir_all(&dir).context("create ocr pack dir")?;
+
+    let mut base: u64 = 0;
     for (file, expected) in [
         (pack.rec_file, pack.rec_bytes),
         (pack.dict_file, pack.dict_bytes),
     ] {
         let target = dir.join(file);
-        if file_matches(&target, expected) {
-            received += expected;
-            continue;
+        if !file_matches(&target, expected) {
+            fetch_file(app, pack.id, file, &target, expected, base, total).await?;
         }
-        fetch_file(app, pack.id, file, &target, expected, &mut received, total).await?;
+        base += expected;
     }
     super::invalidate_engine();
-    let _ = app.emit(
-        PACK_PROGRESS_EVENT,
-        PackProgress {
-            id: pack.id.to_owned(),
-            received: total,
-            total,
-            error: None,
-        },
-    );
+    emit_progress(app, pack.id, total, total, None);
     Ok(())
 }
 
@@ -258,7 +228,7 @@ async fn fetch_file(
     file: &str,
     target: &std::path::Path,
     expected: u64,
-    received: &mut u64,
+    base: u64,
     total: u64,
 ) -> Result<()> {
     let urls = [
@@ -267,11 +237,8 @@ async fn fetch_file(
     ];
     let mut last_err = None;
     for url in &urls {
-        match fetch_one(app, pack_id, url, target, expected, *received, total).await {
-            Ok(()) => {
-                *received += expected;
-                return Ok(());
-            }
+        match fetch_one(app, pack_id, url, target, expected, base, total).await {
+            Ok(()) => return Ok(()),
             Err(err) => {
                 log::warn!("download {url} failed: {err}");
                 last_err = Some(err);
@@ -287,7 +254,7 @@ async fn fetch_one(
     url: &str,
     target: &std::path::Path,
     expected: u64,
-    base_received: u64,
+    base: u64,
     total: u64,
 ) -> Result<()> {
     let response = http_client()
@@ -300,8 +267,7 @@ async fn fetch_one(
 
     let part = target.with_extension("part");
     let mut writer = std::io::BufWriter::new(
-        std::fs::File::create(&part)
-            .map_err(|err| AppError::Other(anyhow::anyhow!("create {part:?}: {err}")))?,
+        std::fs::File::create(&part).with_context(|| format!("create {part:?}"))?,
     );
 
     let mut written: u64 = 0;
@@ -310,25 +276,16 @@ async fn fetch_one(
     while let Some(chunk) = stream.next().await {
         let chunk = chunk.map_err(|err| AppError::Ocr(format!("下载中断: {err}")))?;
         std::io::Write::write_all(&mut writer, &chunk)
-            .map_err(|err| AppError::Other(anyhow::anyhow!("write {part:?}: {err}")))?;
+            .with_context(|| format!("write {part:?}"))?;
         written += chunk.len() as u64;
 
         // 进度事件限频(150ms),避免刷爆事件通道。
         if last_emit.elapsed().as_millis() >= 150 {
             last_emit = std::time::Instant::now();
-            let _ = app.emit(
-                PACK_PROGRESS_EVENT,
-                PackProgress {
-                    id: pack_id.to_owned(),
-                    received: base_received + written,
-                    total,
-                    error: None,
-                },
-            );
+            emit_progress(app, pack_id, base + written, total, None);
         }
     }
-    std::io::Write::flush(&mut writer)
-        .map_err(|err| AppError::Other(anyhow::anyhow!("flush {part:?}: {err}")))?;
+    std::io::Write::flush(&mut writer).with_context(|| format!("flush {part:?}"))?;
     drop(writer);
 
     if written != expected {
@@ -337,7 +294,6 @@ async fn fetch_one(
             "文件大小不符(得到 {written} 字节,预期 {expected}),已丢弃"
         )));
     }
-    std::fs::rename(&part, target)
-        .map_err(|err| AppError::Other(anyhow::anyhow!("rename {part:?}: {err}")))?;
+    std::fs::rename(&part, target).with_context(|| format!("rename {part:?}"))?;
     Ok(())
 }
