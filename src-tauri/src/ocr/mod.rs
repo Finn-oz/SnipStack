@@ -83,7 +83,7 @@ fn build_engine_from_paths(
 /// 识别语言取自设置 `snip.language`;所选语言包缺失时自动回落内置中英。
 ///
 /// CPU 密集:调用方需置于 `spawn_blocking`。
-pub fn recognize(app: &AppHandle, image: RgbaImage) -> Result<Vec<OcrLine>> {
+pub fn recognize(app: &AppHandle, image: &RgbaImage) -> Result<Vec<OcrLine>> {
     let selected = app
         .try_state::<crate::settings::SettingsStore>()
         .map(|store| store.snapshot().snip.language)
@@ -111,9 +111,9 @@ pub fn recognize(app: &AppHandle, image: RgbaImage) -> Result<Vec<OcrLine>> {
     Ok(lines)
 }
 
-fn predict_lines(engine: &mut OAROCR, image: RgbaImage) -> Result<Vec<OcrLine>> {
-    // oar-ocr 管线接收 RGB 图;截屏帧是 RGBA,先丢弃 alpha 通道。
-    let rgb = image::DynamicImage::ImageRgba8(image).to_rgb8();
+fn predict_lines(engine: &mut OAROCR, image: &RgbaImage) -> Result<Vec<OcrLine>> {
+    // oar-ocr 管线接收 RGB 图;截屏帧是 RGBA,从借用直接转出 RGB,不复制原图。
+    let rgb: image::RgbImage = image::buffer::ConvertBuffer::convert(image);
     let results = engine
         .predict(vec![rgb])
         .map_err(|err| AppError::Ocr(format!("OCR 识别失败: {err}")))?;
@@ -214,7 +214,7 @@ mod tests {
         let fixture = image::open(root.join("tests/fixtures/snip-zh-en.png"))
             .expect("open fixture image")
             .to_rgba8();
-        let lines = predict_lines(&mut engine, fixture).expect("recognize fixture");
+        let lines = predict_lines(&mut engine, &fixture).expect("recognize fixture");
         let joined = join_lines(&lines, SnipLineBreak::Keep);
 
         assert!(joined.contains("quick brown fox"), "joined = {joined}");

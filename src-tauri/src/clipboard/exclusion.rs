@@ -26,7 +26,7 @@ mod windows_impl {
         CloseClipboard, GetClipboardData, IsClipboardFormatAvailable, OpenClipboard,
         RegisterClipboardFormatW,
     };
-    use windows::Win32::System::Memory::{GlobalLock, GlobalUnlock};
+    use windows::Win32::System::Memory::{GlobalLock, GlobalSize, GlobalUnlock};
 
     struct ExclusionFormats {
         exclude_from_monitor: u32,
@@ -76,31 +76,31 @@ mod windows_impl {
         false
     }
 
-    /// 读取具名 DWORD 格式的值。剪贴板可能被源应用短暂占用,带一次重试;失败返回 `None`。
+    /// 读取具名 DWORD 格式的值;失败(剪贴板被占用/负载异常)返回 `None`。
+    /// 不做 sleep 重试:本函数跑在 watcher 回调线程上,语义又是 fail-open,
+    /// 阻塞等待的代价高于偶尔漏判一次。
     fn read_dword_format(format: u32) -> Option<u32> {
-        for attempt in 0..2 {
-            if attempt > 0 {
-                std::thread::sleep(std::time::Duration::from_millis(25));
-            }
-            if unsafe { OpenClipboard(None) }.is_err() {
-                continue;
-            }
-            let value = unsafe {
-                GetClipboardData(format).ok().and_then(|handle| {
-                    let hglobal = HGLOBAL(handle.0);
-                    let ptr = GlobalLock(hglobal) as *const u32;
-                    if ptr.is_null() {
-                        return None;
-                    }
-                    let value = ptr.read_unaligned();
-                    // GlobalUnlock 在解锁完成时按 API 约定返回 FALSE,windows crate 映射为 Err,忽略。
-                    let _ = GlobalUnlock(hglobal);
-                    Some(value)
-                })
-            };
-            let _ = unsafe { CloseClipboard() };
-            return value;
+        if unsafe { OpenClipboard(None) }.is_err() {
+            return None;
         }
-        None
+        let value = unsafe {
+            GetClipboardData(format).ok().and_then(|handle| {
+                let hglobal = HGLOBAL(handle.0);
+                // 负载大小由源应用决定,读 DWORD 前必须确认至少 4 字节,否则越界读。
+                if GlobalSize(hglobal) < 4 {
+                    return None;
+                }
+                let ptr = GlobalLock(hglobal) as *const u32;
+                if ptr.is_null() {
+                    return None;
+                }
+                let value = ptr.read_unaligned();
+                // GlobalUnlock 在解锁完成时按 API 约定返回 FALSE,windows crate 映射为 Err,忽略。
+                let _ = GlobalUnlock(hglobal);
+                Some(value)
+            })
+        };
+        let _ = unsafe { CloseClipboard() };
+        value
     }
 }

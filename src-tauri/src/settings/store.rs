@@ -185,17 +185,19 @@ fn write_atomic(path: &Path, settings: &Settings) -> Result<()> {
 fn validate_settings(settings: &Settings) -> Result<()> {
     validate_window_open_group(&settings.clipboard.window.select_group_on_open)?;
 
-    let open_clipboard = normalize_shortcut_value(&settings.shortcuts.open_clipboard);
-    let open_preference = normalize_shortcut_value(&settings.shortcuts.open_preference);
-
-    if open_clipboard.is_empty() || open_preference.is_empty() {
-        return Ok(());
-    }
-
-    if open_clipboard == open_preference {
-        return Err(AppError::Other(anyhow::anyhow!(
-            "global shortcuts must be unique"
-        )));
+    // 三条全局快捷键两两互斥;空绑定(禁用)不参与比较。
+    let bindings = [
+        normalize_shortcut_value(&settings.shortcuts.open_clipboard),
+        normalize_shortcut_value(&settings.shortcuts.open_preference),
+        normalize_shortcut_value(&settings.shortcuts.snip),
+    ];
+    let filled: Vec<&String> = bindings.iter().filter(|b| !b.is_empty()).collect();
+    for (index, binding) in filled.iter().enumerate() {
+        if filled[index + 1..].contains(binding) {
+            return Err(AppError::Other(anyhow::anyhow!(
+                "global shortcuts must be unique"
+            )));
+        }
     }
 
     Ok(())

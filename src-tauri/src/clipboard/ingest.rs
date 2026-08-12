@@ -35,7 +35,7 @@ fn make_summary(plain: &str) -> Option<String> {
 }
 
 /// 当前平台标记。仅 macOS / Windows 双平台（见 AGENTS.md），其余 target 不应被编译进来。
-fn current_platform() -> Platform {
+pub(crate) fn current_platform() -> Platform {
     #[cfg(target_os = "macos")]
     {
         Platform::Macos

@@ -136,10 +136,26 @@ pub fn apply(app: &AppHandle, shortcuts: &Shortcuts) -> Result<()> {
     #[cfg(target_os = "windows")]
     win_v::set_enabled(app, shortcuts.win_v);
 
-    let mut active = Vec::new();
+    let mut active: Vec<(&'static str, Shortcut)> = Vec::new();
     for (action, binding) in desired {
         if binding.trim().is_empty() {
             continue;
+        }
+        // 同一组合键绑到多个动作时,后者跳过并提示,而不是静默抢占前者
+        // (旧配置升级注入新默认值时可能撞上用户既有的自定义绑定)。
+        if let Ok(shortcut) = binding.parse::<Shortcut>() {
+            if active.iter().any(|(_, existing)| *existing == shortcut) {
+                log::warn!("shortcut {action}={binding} duplicates an earlier action, skipped");
+                let _ = app.emit(
+                    CONFLICT_EVENT,
+                    ShortcutConflict {
+                        action,
+                        binding: binding.into(),
+                        reason: "duplicate binding".into(),
+                    },
+                );
+                continue;
+            }
         }
         match register_one(app, action, binding) {
             Ok(shortcut) => active.push((action, shortcut)),

@@ -75,7 +75,10 @@ const Snip: FC = () => {
         const path = await getSnipFrame(monitorRef.current);
         setFrameSrc(convertFileSrc(path));
       } catch (error) {
+        // 拿不到冻结帧则整个会话作废:必须取消,否则覆盖层永不可见、
+        // 会话也永不清理,截屏取字会一直静默失效到重启。
         log.error("load snip frame failed", error);
+        void snipCancel();
       }
     };
 
@@ -89,6 +92,11 @@ const Snip: FC = () => {
 
   const handleFrameLoaded = () => {
     void snipOverlayReady(monitorRef.current);
+  };
+
+  const handleFrameError = () => {
+    log.error("snip frame image failed to render");
+    void snipCancel();
   };
 
   const handleContextMenu = (event: ReactMouseEvent) => {
@@ -163,6 +171,7 @@ const Snip: FC = () => {
           alt=""
           className="pointer-events-none block h-full w-full"
           draggable={false}
+          onError={handleFrameError}
           onLoad={handleFrameLoaded}
           src={frameSrc}
         />

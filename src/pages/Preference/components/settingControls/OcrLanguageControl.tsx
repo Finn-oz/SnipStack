@@ -90,8 +90,17 @@ const OcrLanguageControl: FC<OcrLanguageControlProps> = (props) => {
     });
     try {
       await downloadOcrLanguagePack(id);
+    } catch {
+      // 错误 toast 已由命令包装层弹出;这里只负责收拾本地状态。
     } finally {
+      // 无论成败都清进度条:命令在 Rust 早期阶段失败时不会有终态事件,
+      // 只靠事件清理会让进度条永远卡在 0%。
       downloadingRef.current.delete(id);
+      setPercents((prev) => {
+        const next = { ...prev };
+        delete next[id];
+        return next;
+      });
       await refresh();
     }
   };

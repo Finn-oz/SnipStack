@@ -7,13 +7,32 @@
 //! 存放位置:`<app_local_data>/ocr-packs/<id>/`。属应用级缓存,不随用户数据目录迁移、
 //! 不进备份;删除后可随时重新下载。
 
+use std::collections::HashSet;
 use std::path::PathBuf;
+use std::sync::{Mutex, OnceLock};
+use std::time::Duration;
 
 use futures_util::StreamExt;
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager};
 
 use crate::core::{AppError, Result};
+
+/// 正在下载中的包 id:同包并发下载会互踩同一 `.part` 文件,必须在 Rust 侧互斥
+/// (前端的防重入随组件销毁失效,挡不住关闭设置页再重开的场景)。
+static IN_FLIGHT: Mutex<Option<HashSet<String>>> = Mutex::new(None);
+
+/// 共享 HTTP 客户端:带连接/读取超时,网络僵死时下载会失败而非永久挂起。
+fn http_client() -> &'static reqwest::Client {
+    static CLIENT: OnceLock<reqwest::Client> = OnceLock::new();
+    CLIENT.get_or_init(|| {
+        reqwest::Client::builder()
+            .connect_timeout(Duration::from_secs(15))
+            .read_timeout(Duration::from_secs(30))
+            .build()
+            .expect("build http client")
+    })
+}
 
 /// 与前端 src/constants/events.ts 的 TAURI_EVENT.OCR_PACK_PROGRESS 一一对应。
 pub const PACK_PROGRESS_EVENT: &str = "ocr://pack-progress";
@@ -145,25 +164,58 @@ pub fn delete(app: &AppHandle, id: &str) -> Result<()> {
     Ok(())
 }
 
-/// 下载语言包(rec + dict),沿途 emit 进度事件;失败时 emit 带 error 的终态事件并返回错误。
+/// 下载语言包(rec + dict),沿途 emit 进度事件。
+/// **任何**失败路径都会 emit 带 error 的终态事件(前端据此收起进度条)。
+/// 同包已在下载中时直接返回,由进行中的任务继续广播进度。
 pub async fn download(app: &AppHandle, id: &str) -> Result<()> {
-    let pack = find(id)?;
-    let dir = packs_root(app)?.join(pack.id);
-    std::fs::create_dir_all(&dir)
-        .map_err(|err| AppError::Other(anyhow::anyhow!("create ocr pack dir: {err}")))?;
-
-    let total = pack.rec_bytes + pack.dict_bytes;
-    let result = download_inner(app, pack, &dir, total).await;
+    let result = download_guarded(app, id).await;
     if let Err(err) = &result {
         let _ = app.emit(
             PACK_PROGRESS_EVENT,
             PackProgress {
-                id: pack.id.to_owned(),
+                id: id.to_owned(),
                 received: 0,
-                total,
+                total: PACKS
+                    .iter()
+                    .find(|pack| pack.id == id)
+                    .map(|pack| pack.rec_bytes + pack.dict_bytes)
+                    .unwrap_or(0),
                 error: Some(err.to_string()),
             },
         );
+    }
+    result
+}
+
+async fn download_guarded(app: &AppHandle, id: &str) -> Result<()> {
+    let pack = find(id)?;
+    {
+        let mut guard = IN_FLIGHT
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        if !guard
+            .get_or_insert_with(HashSet::new)
+            .insert(pack.id.to_owned())
+        {
+            // 已有任务在下载本包,其进度事件会继续到达前端。
+            return Ok(());
+        }
+    }
+
+    let result = async {
+        let dir = packs_root(app)?.join(pack.id);
+        std::fs::create_dir_all(&dir)
+            .map_err(|err| AppError::Other(anyhow::anyhow!("create ocr pack dir: {err}")))?;
+        let total = pack.rec_bytes + pack.dict_bytes;
+        download_inner(app, pack, &dir, total).await
+    }
+    .await;
+
+    let mut guard = IN_FLIGHT
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    if let Some(set) = guard.as_mut() {
+        set.remove(pack.id);
     }
     result
 }
@@ -238,7 +290,9 @@ async fn fetch_one(
     base_received: u64,
     total: u64,
 ) -> Result<()> {
-    let response = reqwest::get(url)
+    let response = http_client()
+        .get(url)
+        .send()
         .await
         .map_err(|err| AppError::Ocr(format!("请求失败: {err}")))?
         .error_for_status()
