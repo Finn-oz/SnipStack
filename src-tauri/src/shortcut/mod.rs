@@ -127,9 +127,10 @@ pub fn apply(app: &AppHandle, shortcuts: &Shortcuts) -> Result<()> {
         return Ok(());
     }
 
-    let desired: [(&'static str, &str); 2] = [
+    let desired: [(&'static str, &str); 3] = [
         ("open_clipboard", &shortcuts.open_clipboard),
         ("open_preference", &shortcuts.open_preference),
+        ("snip", &shortcuts.snip),
     ];
 
     #[cfg(target_os = "windows")]
@@ -244,6 +245,12 @@ fn register_one(app: &AppHandle, action: &'static str, binding: &str) -> Result<
 fn handle_event(app: &AppHandle, action: &'static str, event: ShortcutEvent) {
     // Pressed 触发一次即可（Released 是按键松开），避免 toggle 在按下/松开各执行一次回弹。
     if !matches!(event.state(), ShortcutState::Pressed) {
+        return;
+    }
+    if action == "snip" {
+        if let Err(err) = crate::capture::start_snip(app) {
+            log::warn!("start snip via shortcut failed: {err}");
+        }
         return;
     }
     let label = match action {

@@ -1,6 +1,7 @@
 mod admin;
 mod autostart;
 mod backup;
+mod capture;
 mod clipboard;
 mod commands;
 mod core;
@@ -13,6 +14,7 @@ mod keystroke;
 mod menu;
 #[cfg(target_os = "windows")]
 mod mouse;
+mod ocr;
 mod settings;
 mod shortcut;
 mod tray;
@@ -95,6 +97,11 @@ pub fn run() {
         .plugin(updater_plugin)
         .plugin(core::prevent_default::init())
         .invoke_handler(tauri::generate_handler![
+            commands::start_snip,
+            commands::snip_overlay_ready,
+            commands::get_snip_frame,
+            commands::snip_cancel,
+            commands::snip_confirm,
             commands::get_run_as_admin_status,
             commands::set_run_as_admin,
             commands::restart_as_admin,
@@ -216,6 +223,8 @@ pub fn run() {
                 clipboard::init(&handle_db)?;
                 Ok::<_, anyhow::Error>(())
             })?;
+
+            capture::init(&handle);
 
             shortcut::init(&handle, &settings.shortcuts).map_err(|err| {
                 log::error!("global shortcut initialization failed: {err:?}");

@@ -142,6 +142,16 @@ fn write_files_as_text(
     Ok(())
 }
 
+/// 把纯文本直接写入剪贴板（截屏取字等不经条目的场景），写前登记回环抑制。
+/// 时序约束同 [`write_to_clipboard`]：须在不跨 await 的同步段内调用。
+pub fn write_plain_text(guard: &WritebackGuard, text: &str) -> Result<()> {
+    let ctx = ClipboardContext::new().map_err(clip_err)?;
+
+    guard.suppress(content_hash(ClipboardKind::Text, text));
+    ctx.set_text(text.to_owned()).map_err(clip_err)?;
+    Ok(())
+}
+
 fn clip_err<E: std::fmt::Display>(err: E) -> AppError {
     AppError::Clipboard(err.to_string())
 }

@@ -25,6 +25,7 @@
     "tsc": "tsc --noEmit",
     "dev:vite": "vite",
     "build:icon": "tsx scripts/buildIcon.ts",
+    "fetch:ocr-models": "tsx scripts/fetchOcrModels.ts",
     "build:vite": "vite build",
     "preview": "vite preview",
     "tauri": "tauri",

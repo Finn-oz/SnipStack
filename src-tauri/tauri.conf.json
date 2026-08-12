@@ -64,7 +64,7 @@
     ],
     "license": "Apache-2.0",
     "licenseFile": "../LICENSE",
-    "resources": ["assets/tray.ico"],
+    "resources": ["assets/tray.ico", "resources/ocr/"],
     "shortDescription": "SnipStack",
     "targets": ["nsis", "dmg", "app"]
   },

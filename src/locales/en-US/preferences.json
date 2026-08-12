@@ -126,6 +126,9 @@
       "sensitive": {
         "title": "Privacy"
       },
+      "snip": {
+        "title": "Snip Text"
+      },
       "source": {
         "title": "App Filters"
       },
@@ -530,9 +533,32 @@
           "placeholder": "Alt+X",
           "title": "Open Preferences Window"
         },
+        "snip": {
+          "description": "Select a screen region and recognize its text offline.",
+          "placeholder": "Alt+S",
+          "title": "Snip text"
+        },
         "winV": {
           "description": "Press Win+V to summon SnipStack instead of the Windows clipboard history panel.",
           "title": "Take Over Win+V"
+        }
+      },
+      "snip": {
+        "autoCopy": {
+          "description": "Copy the recognized text to the clipboard automatically.",
+          "title": "Auto Copy"
+        },
+        "lineBreak": {
+          "description": "Keep original line breaks, or merge into one paragraph (no space inserted between CJK lines).",
+          "options": {
+            "keep": "Keep",
+            "merge": "Merge"
+          },
+          "title": "Line Breaks"
+        },
+        "saveToHistory": {
+          "description": "Store the snip image with its text so the screenshot is searchable.",
+          "title": "Save to History"
         }
       },
       "source": {
@@ -645,6 +671,9 @@
       },
       "shortcuts": {
         "title": "Shortcuts"
+      },
+      "snip": {
+        "title": "Snip Text"
       },
       "workflow": {
         "title": "Interface"

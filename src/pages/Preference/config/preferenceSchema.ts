@@ -717,6 +717,47 @@ export const preferenceTabs: PreferenceTab[] = [
     ],
   },
   {
+    icon: "i-lucide:scan-text",
+    id: "snip",
+    sections: [
+      {
+        id: "snip",
+        settings: [
+          {
+            control: {
+              options: [{ value: "keep" }, { value: "merge" }],
+              type: "segmented",
+            },
+            id: "snip.lineBreak",
+            keywords: ["snip", "ocr", "line break", "newline"],
+            path: ["snip", "lineBreak"],
+            value: (settings) => {
+              return settings.snip.lineBreak;
+            },
+          },
+          {
+            control: { type: "switch" },
+            id: "snip.autoCopy",
+            keywords: ["snip", "ocr", "copy", "clipboard"],
+            path: ["snip", "autoCopy"],
+            value: (settings) => {
+              return settings.snip.autoCopy;
+            },
+          },
+          {
+            control: { type: "switch" },
+            id: "snip.saveToHistory",
+            keywords: ["snip", "ocr", "history", "search"],
+            path: ["snip", "saveToHistory"],
+            value: (settings) => {
+              return settings.snip.saveToHistory;
+            },
+          },
+        ],
+      },
+    ],
+  },
+  {
     icon: "i-lucide:keyboard",
     id: "shortcuts",
     sections: [
@@ -739,6 +780,15 @@ export const preferenceTabs: PreferenceTab[] = [
             path: ["shortcuts", "openPreference"],
             value: (settings) => {
               return settings.shortcuts.openPreference;
+            },
+          },
+          {
+            control: { type: "shortcutRecorder" },
+            id: "shortcuts.snip",
+            keywords: ["shortcut", "hotkey", "snip", "ocr", "screenshot"],
+            path: ["shortcuts", "snip"],
+            value: (settings) => {
+              return settings.shortcuts.snip;
             },
           },
           ...(isWin

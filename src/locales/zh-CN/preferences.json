@@ -126,6 +126,9 @@
       "sensitive": {
         "title": "隐私保护"
       },
+      "snip": {
+        "title": "截屏取字"
+      },
       "source": {
         "title": "应用过滤"
       },
@@ -530,9 +533,32 @@
           "placeholder": "Alt+X",
           "title": "打开偏好设置窗口"
         },
+        "snip": {
+          "description": "框选屏幕区域,离线识别其中的文字。",
+          "placeholder": "Alt+S",
+          "title": "截屏取字"
+        },
         "winV": {
           "description": "按 Win+V 唤起 SnipStack，替代 Windows 系统剪贴板历史面板。",
           "title": "接管 Win+V"
+        }
+      },
+      "snip": {
+        "autoCopy": {
+          "description": "识别完成后自动把文本写入剪贴板。",
+          "title": "自动复制"
+        },
+        "lineBreak": {
+          "description": "识别结果保留原始换行,或合并为一段(中文续行不加空格)。",
+          "options": {
+            "keep": "保留换行",
+            "merge": "合并为一段"
+          },
+          "title": "换行处理"
+        },
+        "saveToHistory": {
+          "description": "截图与识别文本一并存入历史,可按文字搜索到这张截图。",
+          "title": "存入历史"
         }
       },
       "source": {
@@ -645,6 +671,9 @@
       },
       "shortcuts": {
         "title": "快捷键"
+      },
+      "snip": {
+        "title": "截屏取字"
       },
       "workflow": {
         "title": "界面"

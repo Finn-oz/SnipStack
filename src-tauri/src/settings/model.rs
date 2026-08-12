@@ -17,8 +17,40 @@ pub struct Settings {
     pub appearance: Appearance,
     pub shortcuts: Shortcuts,
     pub clipboard: Clipboard,
+    pub snip: Snip,
     pub onboarding: Onboarding,
     pub update: Update,
+}
+
+/// 截屏取字(框选 OCR)设置。
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(default, rename_all = "camelCase")]
+pub struct Snip {
+    /// 识别结果的换行处理策略。
+    pub line_break: SnipLineBreak,
+    /// 识别完成后自动把文本写入剪贴板。
+    pub auto_copy: bool,
+    /// 识别结果连同截图一并存入历史(截图条目的搜索文本为 OCR 结果)。
+    pub save_to_history: bool,
+}
+
+impl Default for Snip {
+    fn default() -> Self {
+        Self {
+            line_break: SnipLineBreak::Keep,
+            auto_copy: true,
+            save_to_history: true,
+        }
+    }
+}
+
+/// OCR 结果换行策略:保留原始行结构,或合并成一段(CJK 相邻不加空格,拉丁词间保留空格)。
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub enum SnipLineBreak {
+    #[default]
+    Keep,
+    Merge,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -124,6 +156,8 @@ pub struct Shortcuts {
     pub open_clipboard: String,
     /// 全局：打开偏好设置窗口。
     pub open_preference: String,
+    /// 全局：截屏取字(框选 OCR)。
+    pub snip: String,
     /// 仅 Windows：用 Win+V 唤起剪贴板窗口，替代系统剪贴板历史面板。默认关闭。
     pub win_v: bool,
 }
@@ -133,6 +167,7 @@ impl Default for Shortcuts {
         Self {
             open_clipboard: "Alt+C".into(),
             open_preference: "Alt+X".into(),
+            snip: "Alt+S".into(),
             win_v: false,
         }
     }

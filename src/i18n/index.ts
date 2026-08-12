@@ -6,6 +6,7 @@ import commonEnUS from "@/locales/en-US/common.json";
 import onboardingEnUS from "@/locales/en-US/onboarding.json";
 import preferencesEnUS from "@/locales/en-US/preferences.json";
 import previewEnUS from "@/locales/en-US/preview.json";
+import snipEnUS from "@/locales/en-US/snip.json";
 import updateEnUS from "@/locales/en-US/update.json";
 import clipboardZhCN from "@/locales/zh-CN/clipboard.json";
 import commandsZhCN from "@/locales/zh-CN/commands.json";
@@ -13,6 +14,7 @@ import commonZhCN from "@/locales/zh-CN/common.json";
 import onboardingZhCN from "@/locales/zh-CN/onboarding.json";
 import preferencesZhCN from "@/locales/zh-CN/preferences.json";
 import previewZhCN from "@/locales/zh-CN/preview.json";
+import snipZhCN from "@/locales/zh-CN/snip.json";
 import updateZhCN from "@/locales/zh-CN/update.json";
 import type { Language } from "@/types/settings";
 
@@ -24,6 +26,7 @@ export const I18N_NAMESPACES = [
   "onboarding",
   "preferences",
   "preview",
+  "snip",
   "update",
 ] as const;
 
@@ -46,6 +49,7 @@ void i18n.use(initReactI18next).init({
       onboarding: onboardingEnUS,
       preferences: preferencesEnUS,
       preview: previewEnUS,
+      snip: snipEnUS,
       update: updateEnUS,
     },
     "zh-CN": {
@@ -55,6 +59,7 @@ void i18n.use(initReactI18next).init({
       onboarding: onboardingZhCN,
       preferences: preferencesZhCN,
       preview: previewZhCN,
+      snip: snipZhCN,
       update: updateZhCN,
     },
   },

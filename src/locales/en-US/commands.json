@@ -72,6 +72,8 @@
     "setRunAsAdmin": "Set administrator launch",
     "setTaskbarIcon": "Set taskbar icon",
     "skipUpdateVersion": "Skip update version",
+    "snip": "Snip text",
+    "startSnip": "Start snip",
     "suspendGlobalShortcuts": "Suspend global shortcuts",
     "toggleFavorite": "Favorite",
     "unpinItem": "Unpin item"

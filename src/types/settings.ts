@@ -84,7 +84,16 @@ export interface Appearance {
 export interface Shortcuts {
   openClipboard: string;
   openPreference: string;
+  snip: string;
   winV: boolean;
+}
+
+export type SnipLineBreak = "keep" | "merge";
+
+export interface Snip {
+  lineBreak: SnipLineBreak;
+  autoCopy: boolean;
+  saveToHistory: boolean;
 }
 
 export interface Content {
@@ -210,6 +219,7 @@ export interface Settings {
   appearance: Appearance;
   shortcuts: Shortcuts;
   clipboard: Clipboard;
+  snip: Snip;
   onboarding: Onboarding;
   update: Update;
 }

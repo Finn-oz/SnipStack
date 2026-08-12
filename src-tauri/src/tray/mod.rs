@@ -26,6 +26,7 @@ use crate::window::{self, PREFERENCE_WINDOW_LABEL};
 const TRAY_ID: &str = "app-tray";
 const GITHUB_URL: &str = "https://github.com/snipstack/SnipStack";
 
+const MENU_SNIP: &str = "tray::snip";
 const MENU_PREFERENCE: &str = "tray::preference";
 const MENU_TOGGLE_LISTEN: &str = "tray::toggle_listen";
 const MENU_OPEN_SOURCE: &str = "tray::open_source";
@@ -134,6 +135,14 @@ fn build_menu(
     version: &str,
     paused: bool,
 ) -> Result<Menu<tauri::Wry>> {
+    let snip = MenuItem::with_id(
+        app,
+        MENU_SNIP,
+        tray_i18n::label(lang, Key::Snip),
+        true,
+        None::<&str>,
+    )
+    .context("build snip menu item")?;
     let preference = MenuItem::with_id(
         app,
         MENU_PREFERENCE,
@@ -202,6 +211,7 @@ fn build_menu(
 
     MenuBuilder::new(app)
         .items(&[
+            &snip,
             &preference,
             &toggle_listen,
             &sep1,
@@ -219,6 +229,11 @@ fn build_menu(
 
 fn handle_menu_event(app: &AppHandle, id: &str) {
     match id {
+        MENU_SNIP => {
+            if let Err(err) = crate::capture::start_snip(app) {
+                log::error!("tray start snip failed: {err:?}");
+            }
+        }
         MENU_PREFERENCE => {
             if let Err(err) = window::show_window(app, PREFERENCE_WINDOW_LABEL) {
                 log::error!("tray open preference failed: {err:?}");

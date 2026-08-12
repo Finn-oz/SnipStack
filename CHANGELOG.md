@@ -10,6 +10,12 @@ clipboard-manager codebase, see the upstream changelog.
 
 ### Added
 
+- Snip-to-text: global hotkey (default `Alt+S`) or tray menu opens a
+  per-monitor selection overlay; the selected region is recognized offline
+  with PP-OCRv5 mobile (Chinese + English), the text is copied to the
+  clipboard, and the snip image is saved to history with its recognized
+  text as searchable content. Line-break mode (keep / merge) and auto-copy
+  are configurable in a new Snip preferences tab.
 - Project forked from EcoPaste and rebranded to SnipStack
   (identifier `com.snipstack.app`, backup extension `.snipstackbak`,
   data dir `SnipStackData`).

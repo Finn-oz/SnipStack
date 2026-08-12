@@ -36,6 +36,10 @@ export const PREFERENCE_TAB_META: Record<PreferenceTabId, PreferenceTabMeta> = {
     activeClass: "bg-ant-fill-secondary text-ant-text",
     icon: "i-lucide:keyboard",
   },
+  snip: {
+    activeClass: "bg-ant-fill-secondary text-ant-text",
+    icon: "i-lucide:scan-text",
+  },
   workflow: {
     activeClass: "bg-ant-fill-secondary text-ant-text",
     icon: "i-lucide:panel-top",

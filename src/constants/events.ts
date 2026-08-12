@@ -13,6 +13,7 @@ export const TAURI_EVENT = {
   PREFERENCE_HIGHLIGHT_SETTING: "preference://highlight-setting",
   PREVIEW_UPDATED: "preview://updated",
   SETTINGS_UPDATED: "settings://updated",
+  SNIP_DONE: "snip://done",
   UPDATE_PROGRESS: "update://progress",
   WINDOW_BEFORE_DESTROY: "window://before-destroy",
   WINDOW_LIFECYCLE: "window://lifecycle",

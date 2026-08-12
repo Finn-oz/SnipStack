@@ -4,6 +4,7 @@ import ContextMenu, { ContextSubmenu } from "@/pages/ContextMenu";
 import Onboarding from "@/pages/Onboarding";
 import Preference from "@/pages/Preference";
 import Preview from "@/pages/Preview";
+import Snip from "@/pages/Snip";
 import Update from "@/pages/Update";
 
 export const router = createHashRouter([
@@ -30,6 +31,10 @@ export const router = createHashRouter([
   {
     Component: Preview,
     path: "/preview",
+  },
+  {
+    Component: Snip,
+    path: "/snip",
   },
   {
     Component: Update,

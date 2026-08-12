@@ -1478,3 +1478,56 @@ export const hideContextMenus = async () => {
     log.error("hide context menus failed", toAppError(error));
   }
 };
+
+/**
+ * 启动截屏取字会话(托盘/设置页入口;全局热键在 Rust 侧直达)。
+ */
+export const startSnip = async () => {
+  await call<void>(TAURI_COMMAND.START_SNIP, "commands:labels.startSnip");
+};
+
+/**
+ * 覆盖层帧图加载完成,请求 Rust 显示覆盖层窗口。
+ */
+export const snipOverlayReady = async (monitor: number) => {
+  await call<void>(TAURI_COMMAND.SNIP_OVERLAY_READY, "commands:labels.snip", {
+    monitor,
+  });
+};
+
+/**
+ * 取指定显示器冻结帧的本地路径。
+ */
+export const getSnipFrame = async (monitor: number) => {
+  return await call<string>(
+    TAURI_COMMAND.GET_SNIP_FRAME,
+    "commands:labels.snip",
+    {
+      monitor,
+    },
+  );
+};
+
+/**
+ * 取消当前截屏取字会话。
+ */
+export const snipCancel = async () => {
+  await call<void>(TAURI_COMMAND.SNIP_CANCEL, "commands:labels.snip");
+};
+
+export interface SnipSelectionInput {
+  monitor: number;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+/**
+ * 提交框选选区;识别与结果处理在 Rust 后台完成,结束时广播 `snip://done`。
+ */
+export const snipConfirm = async (selection: SnipSelectionInput) => {
+  await call<void>(TAURI_COMMAND.SNIP_CONFIRM, "commands:labels.snip", {
+    selection,
+  });
+};

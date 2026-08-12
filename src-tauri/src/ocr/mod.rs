@@ -1,0 +1,244 @@
+//! OCR 推理管线：PP-OCRv5 mobile(det + rec)经 oar-ocr / ONNX Runtime 离线识别。
+//!
+//! 引擎懒加载：首次识别时从 bundle resources 读模型构建,之后常驻复用。
+//! 构建与推理都是 CPU 密集操作,调用方必须放在 `spawn_blocking` 里,不要阻塞异步运行时。
+
+use std::path::PathBuf;
+use std::sync::{Mutex, OnceLock};
+
+use image::RgbaImage;
+use oar_ocr::prelude::*;
+use tauri::path::BaseDirectory;
+use tauri::{AppHandle, Manager};
+
+use crate::core::{AppError, Result};
+use crate::settings::SnipLineBreak;
+
+/// 低于该置信度的识别行按噪声丢弃。
+const MIN_LINE_SCORE: f32 = 0.3;
+
+/// 识别出的一行文本(管线已按阅读顺序排序,低置信度行已过滤)。
+pub struct OcrLine {
+    pub text: String,
+}
+
+/// 全局唯一引擎实例。oar-ocr 引擎构建要读 20MB 模型,只做一次。
+/// `Mutex` 串行化推理:桌面截屏场景不存在并发识别,简单优先。
+static ENGINE: OnceLock<Mutex<OAROCR>> = OnceLock::new();
+
+/// 解析模型资源文件;dev 模式下即 `src-tauri/resources/ocr/`。
+fn resource(app: &AppHandle, name: &str) -> Result<PathBuf> {
+    let path = app
+        .path()
+        .resolve(format!("resources/ocr/{name}"), BaseDirectory::Resource)
+        .map_err(|err| AppError::Other(anyhow::anyhow!("resolve ocr resource {name}: {err}")))?;
+    if !path.is_file() {
+        return Err(AppError::Ocr(format!(
+            "OCR 模型缺失: {name}(先执行 pnpm fetch:ocr-models)"
+        )));
+    }
+    Ok(path)
+}
+
+fn build_engine(app: &AppHandle) -> Result<OAROCR> {
+    let det = resource(app, "pp-ocrv5_mobile_det.onnx")?;
+    let rec = resource(app, "pp-ocrv5_mobile_rec.onnx")?;
+    let dict = resource(app, "ppocrv5_dict.txt")?;
+
+    let started = std::time::Instant::now();
+    let engine = build_engine_from_paths(&det, &rec, &dict)?;
+    log::info!("ocr engine ready in {:?}", started.elapsed());
+    Ok(engine)
+}
+
+fn build_engine_from_paths(
+    det: &std::path::Path,
+    rec: &std::path::Path,
+    dict: &std::path::Path,
+) -> Result<OAROCR> {
+    OAROCRBuilder::new(
+        det.to_string_lossy().into_owned(),
+        rec.to_string_lossy().into_owned(),
+        dict.to_string_lossy().into_owned(),
+    )
+    .build()
+    .map_err(|err| AppError::Ocr(format!("构建 OCR 引擎失败: {err}")))
+}
+
+/// 对一张 RGBA 图做整图 OCR,返回按阅读顺序排列的行。
+///
+/// CPU 密集:调用方需置于 `spawn_blocking`。
+pub fn recognize(app: &AppHandle, image: RgbaImage) -> Result<Vec<OcrLine>> {
+    let engine = match ENGINE.get() {
+        Some(engine) => engine,
+        None => {
+            let built = Mutex::new(build_engine(app)?);
+            // 竞态时丢弃后建的引擎,统一走先建成的。
+            let _ = ENGINE.set(built);
+            ENGINE.get().expect("ocr engine just initialized")
+        }
+    };
+
+    let started = std::time::Instant::now();
+    let lines = predict_lines(
+        &mut engine
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner()),
+        image,
+    )?;
+    log::info!(
+        "ocr recognized {} lines in {:?}",
+        lines.len(),
+        started.elapsed()
+    );
+    Ok(lines)
+}
+
+fn predict_lines(engine: &mut OAROCR, image: RgbaImage) -> Result<Vec<OcrLine>> {
+    // oar-ocr 管线接收 RGB 图;截屏帧是 RGBA,先丢弃 alpha 通道。
+    let rgb = image::DynamicImage::ImageRgba8(image).to_rgb8();
+    let results = engine
+        .predict(vec![rgb])
+        .map_err(|err| AppError::Ocr(format!("OCR 识别失败: {err}")))?;
+
+    let mut lines = Vec::new();
+    for result in &results {
+        for region in &result.text_regions {
+            let Some(text) = region.text.as_ref() else {
+                continue;
+            };
+            let text = text.trim();
+            if text.is_empty() {
+                continue;
+            }
+            // 引擎未给出置信度时按可信处理,只过滤明确的低分噪声(误检的花纹/图标)。
+            let score = region.confidence.unwrap_or(1.0);
+            if score < MIN_LINE_SCORE {
+                continue;
+            }
+            lines.push(OcrLine {
+                text: text.to_owned(),
+            });
+        }
+    }
+    Ok(lines)
+}
+
+/// 按换行策略把识别行拼成最终文本。
+///
+/// `Merge` 模式的拼接规则:相邻两段的接缝处若任一侧是 CJK 字符则直接相连,
+/// 否则(拉丁词与拉丁词)补一个空格——对应中英混排里「中文续行不加空格、英文断词加空格」。
+pub fn join_lines(lines: &[OcrLine], mode: SnipLineBreak) -> String {
+    match mode {
+        SnipLineBreak::Keep => lines
+            .iter()
+            .map(|line| line.text.as_str())
+            .collect::<Vec<_>>()
+            .join("\n"),
+        SnipLineBreak::Merge => {
+            let mut merged = String::new();
+            for line in lines {
+                if merged.is_empty() {
+                    merged.push_str(&line.text);
+                    continue;
+                }
+                let prev = merged.chars().next_back();
+                let next = line.text.chars().next();
+                if !joins_without_space(prev) && !joins_without_space(next) {
+                    merged.push(' ');
+                }
+                merged.push_str(&line.text);
+            }
+            merged
+        }
+    }
+}
+
+/// 判断接缝一侧的字符是否可无空格直连(CJK 及全角标点)。
+fn joins_without_space(ch: Option<char>) -> bool {
+    let Some(ch) = ch else {
+        return false;
+    };
+    matches!(u32::from(ch),
+        0x2E80..=0x303F      // CJK 部首、康熙部首、CJK 标点
+        | 0x3040..=0x30FF    // 日文假名
+        | 0x3400..=0x4DBF    // CJK 扩展 A
+        | 0x4E00..=0x9FFF    // CJK 统一表意
+        | 0xF900..=0xFAFF    // CJK 兼容表意
+        | 0xFF00..=0xFFEF    // 全角形式
+        | 0x20000..=0x2FA1F  // CJK 扩展 B 及以后
+    )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn line(text: &str) -> OcrLine {
+        OcrLine {
+            text: text.to_owned(),
+        }
+    }
+
+    /// 真实引擎端到端:构建 PP-OCRv5 引擎识别中英混排夹具图。
+    /// 模型未下载(CI 默认不带)时跳过;本地先执行 `pnpm fetch:ocr-models`。
+    #[test]
+    fn recognizes_fixture_image_with_real_engine() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+        let det = root.join("resources/ocr/pp-ocrv5_mobile_det.onnx");
+        let rec = root.join("resources/ocr/pp-ocrv5_mobile_rec.onnx");
+        let dict = root.join("resources/ocr/ppocrv5_dict.txt");
+        if !det.is_file() || !rec.is_file() || !dict.is_file() {
+            eprintln!("skip: ocr models not present, run `pnpm fetch:ocr-models`");
+            return;
+        }
+
+        let mut engine = build_engine_from_paths(&det, &rec, &dict).expect("build ocr engine");
+        let fixture = image::open(root.join("tests/fixtures/snip-zh-en.png"))
+            .expect("open fixture image")
+            .to_rgba8();
+        let lines = predict_lines(&mut engine, fixture).expect("recognize fixture");
+        let joined = join_lines(&lines, SnipLineBreak::Keep);
+
+        assert!(joined.contains("quick brown fox"), "joined = {joined}");
+        assert!(joined.contains("截屏取字"), "joined = {joined}");
+        assert!(joined.contains("剪贴板历史"), "joined = {joined}");
+        assert!(joined.contains("2026"), "joined = {joined}");
+    }
+
+    #[test]
+    fn keep_mode_preserves_line_breaks() {
+        let lines = [line("第一行"), line("second line")];
+        assert_eq!(
+            join_lines(&lines, SnipLineBreak::Keep),
+            "第一行\nsecond line"
+        );
+    }
+
+    #[test]
+    fn merge_mode_joins_cjk_without_space() {
+        let lines = [line("剪贴板历史管理,支持"), line("全文搜索与置顶。")];
+        assert_eq!(
+            join_lines(&lines, SnipLineBreak::Merge),
+            "剪贴板历史管理,支持全文搜索与置顶。"
+        );
+    }
+
+    #[test]
+    fn merge_mode_joins_latin_with_space() {
+        let lines = [line("clipboard history with"), line("full-text search")];
+        assert_eq!(
+            join_lines(&lines, SnipLineBreak::Merge),
+            "clipboard history with full-text search"
+        );
+    }
+
+    #[test]
+    fn merge_mode_mixed_boundary_prefers_no_space() {
+        let lines = [line("支持 Windows 11"), line("与中英混排 OCR")];
+        assert_eq!(
+            join_lines(&lines, SnipLineBreak::Merge),
+            "支持 Windows 11与中英混排 OCR"
+        );
+    }
+}

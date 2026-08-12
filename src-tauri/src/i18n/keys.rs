@@ -29,6 +29,7 @@ pub enum CommandKey {
 
 #[derive(Debug, Clone, Copy)]
 pub enum TrayKey {
+    Snip,
     Preference,
     StartListening,
     StopListening,
