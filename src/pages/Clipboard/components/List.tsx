@@ -53,6 +53,7 @@ import type {
 } from "@/types/clipboard";
 import type { ItemAction } from "@/types/settings";
 import { cn } from "@/utils/cn";
+import { getMessageApi } from "@/utils/feedback";
 import { isMac } from "@/utils/is";
 import type { WindowVisibilityPayload } from "../hooks/previewController";
 import {
@@ -71,6 +72,13 @@ interface ClipboardUpdatedPayload {
   id?: string;
   imported?: boolean;
   kind?: ClipboardKind;
+}
+
+/** 与 Rust `capture::SnipDone` 一一对应。 */
+interface SnipDonePayload {
+  ok: boolean;
+  chars: number;
+  error?: string;
 }
 
 interface ClipboardMenuActionPayload {
@@ -276,6 +284,20 @@ const List: FC = () => {
       handleClipboardUpdated(event.payload);
     },
   );
+
+  /**
+   * 截屏取字完成:识别文本已进剪贴板/历史,给用户一个结果反馈。
+   * 窗口隐藏时 toast 不可见,无副作用,无需按可见性分支。
+   */
+  useTauriListen<SnipDonePayload>(TAURI_EVENT.SNIP_DONE, (event) => {
+    const { ok, chars, error } = event.payload;
+
+    if (ok) {
+      getMessageApi().success(t("snip.done", { count: chars }));
+      return;
+    }
+    getMessageApi().error(t("snip.failed", { message: error ?? "" }));
+  });
 
   /**
    * 剪贴板窗口显隐变化：更新可见性镜像；显示时按偏好重置分组与滚动位置。

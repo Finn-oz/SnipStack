@@ -10,6 +10,16 @@ clipboard-manager codebase, see the upstream changelog.
 
 ### Added
 
+- QR/barcode detection in the snip selection: codes are decoded directly
+  (multiple codes joined by line) with OCR as the fallback; configurable.
+- Background OCR for copied images: images captured from the clipboard are
+  recognized in the background and become full-text searchable; snips and
+  already-indexed items are never re-processed or overwritten.
+- Clipboard monitor now honors the Windows exclusion format conventions
+  (`ExcludeClipboardContentFromMonitorProcessing`, `Clipboard Viewer
+  Ignore`, `CanIncludeInClipboardHistory=0`), so password managers like
+  KeePass and 1Password are never recorded.
+- Snip completion toast in the clipboard window (character count or error).
 - Snip-to-text: global hotkey (default `Alt+S`) or tray menu opens a
   per-monitor selection overlay; the selected region is recognized offline
   with PP-OCRv5 mobile (Chinese + English), the text is copied to the
@@ -27,10 +37,6 @@ clipboard-manager codebase, see the upstream changelog.
 
 ### Planned
 
-- Screen-capture OCR: global hotkey → region selection → offline OCR
-  (PP-OCRv5 mobile, Chinese + English) → clipboard + history.
-- QR/barcode decoding in captured regions.
-- Line-break handling modes (keep / merge) for OCR results.
-- Background OCR of copied images with FTS-searchable text.
-- Clipboard privacy: honor monitor-exclusion clipboard formats; history
-  size/TTL limits.
+- Mixed-DPI multi-monitor polish and Windows 11 end-to-end validation.
+- Downloadable OCR language packs beyond Chinese + English.
+- NSIS installer, updater signing key, and first public release.

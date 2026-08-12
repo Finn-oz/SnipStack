@@ -2,6 +2,7 @@ mod app_store;
 mod apps_registry;
 mod cleanup;
 mod detect;
+mod exclusion;
 mod file_icon_store;
 mod guard;
 mod icon;
@@ -31,7 +32,9 @@ pub use read::ClipboardReader;
 pub use sound::play_copy_sound;
 pub use source::detect_frontmost;
 pub use storage::ImageStore;
-pub use watcher::{init, materialize_source, persist_and_notify, WatcherPause};
+pub use watcher::{
+    init, materialize_source, persist_and_notify, WatcherPause, CLIPBOARD_UPDATED_EVENT,
+};
 pub use write::{write_plain_text, write_to_clipboard};
 
 #[cfg(test)]

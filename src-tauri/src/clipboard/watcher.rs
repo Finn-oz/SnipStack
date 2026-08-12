@@ -28,7 +28,7 @@ use super::source::{self, FrontmostApp};
 use super::storage::ImageStore;
 use crate::db::apps::upsert_app;
 use crate::db::items::{upsert_item, UpsertResult};
-use crate::db::models::{ClipboardApp, ClipboardItem};
+use crate::db::models::{ClipboardApp, ClipboardItem, ClipboardKind};
 use crate::settings::SettingsStore;
 
 /// 剪贴板更新事件名。前端监听此事件后增量刷新 / 重新拉取列表。
@@ -264,6 +264,11 @@ impl ClipboardHandler for ClipboardChangeHandler {
             return;
         }
 
+        // 密码管理器等应用按剪贴板格式约定请求监控方忽略本次内容(仅 Windows 有此约定)。
+        if super::exclusion::should_exclude_current() {
+            return;
+        }
+
         // **先**抓前台应用：等异步入库再问，前台早就切回我们自己了。
         // 自身写回的事件会在下方 guard 处被丢弃，但 detect 仍会无害地返回我们自己的 bundle id——
         // 顺序换不得：guard 判定依赖 content_hash，必须先把 payload 读出来才能判，
@@ -338,8 +343,14 @@ impl ClipboardHandler for ClipboardChangeHandler {
         let app = self.app.clone();
         tauri::async_runtime::spawn(async move {
             let pool = app.state::<crate::db::DatabaseState>().pool().await;
-            if let Err(err) = persist_and_notify(&app, &pool, &item, source_app.as_ref()).await {
-                log::error!("clipboard watcher: persist failed: {err}");
+            match persist_and_notify(&app, &pool, &item, source_app.as_ref()).await {
+                Ok(result) => {
+                    // 复制进来的图片交给后台 OCR 补建全文索引(设置开启时)。
+                    if item.kind == ClipboardKind::Image {
+                        crate::ocr::backfill::schedule(&app, result.id, item.content.clone());
+                    }
+                }
+                Err(err) => log::error!("clipboard watcher: persist failed: {err}"),
             }
         });
     }

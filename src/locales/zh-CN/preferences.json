@@ -548,6 +548,10 @@
           "description": "识别完成后自动把文本写入剪贴板。",
           "title": "自动复制"
         },
+        "detectQr": {
+          "description": "框选区域内发现二维码/条码时直接取码值,不再走文字识别。",
+          "title": "识别二维码/条码"
+        },
         "lineBreak": {
           "description": "识别结果保留原始换行,或合并为一段(中文续行不加空格)。",
           "options": {
@@ -555,6 +559,10 @@
             "merge": "合并为一段"
           },
           "title": "换行处理"
+        },
+        "ocrCopiedImages": {
+          "description": "后台识别复制进历史的图片,识别文本进入全文搜索——凭文字找回任何截图。",
+          "title": "索引复制的图片"
         },
         "saveToHistory": {
           "description": "截图与识别文本一并存入历史,可按文字搜索到这张截图。",

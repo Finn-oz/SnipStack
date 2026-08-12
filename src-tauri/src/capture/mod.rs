@@ -266,6 +266,12 @@ pub async fn confirm_snip(app: AppHandle, selection: SnipSelection) -> Result<()
     let settings = app.state::<SettingsStore>().snapshot().snip;
     let ocr_app = app.clone();
     let outcome = tauri::async_runtime::spawn_blocking(move || {
+        // QR/条码优先:命中直接取码值(TextSniper 同款行为),未命中回落 OCR。
+        if settings.detect_qr {
+            if let Some(text) = decode_barcodes(&cropped) {
+                return Ok::<_, AppError>((text, cropped));
+            }
+        }
         let lines = ocr::recognize(&ocr_app, cropped_for_ocr(&cropped))?;
         let text = ocr::join_lines(&lines, settings.line_break);
         Ok::<_, AppError>((text, cropped))
@@ -314,6 +320,24 @@ pub async fn confirm_snip(app: AppHandle, selection: SnipSelection) -> Result<()
 /// OCR 前处理留口:目前直接用裁剪图。后续可做放大/二值化等增强。
 fn cropped_for_ocr(cropped: &RgbaImage) -> RgbaImage {
     cropped.clone()
+}
+
+/// 尝试解码框选区域内的 QR/条码;多个码按出现顺序换行拼接,未命中返回 `None`。
+fn decode_barcodes(image: &RgbaImage) -> Option<String> {
+    let luma = image::DynamicImage::ImageRgba8(image.clone()).to_luma8();
+    let (width, height) = (luma.width(), luma.height());
+    let results = rxing::helpers::detect_multiple_in_luma(luma.into_raw(), width, height).ok()?;
+
+    let texts: Vec<String> = results
+        .iter()
+        .map(|result| result.getText().trim().to_owned())
+        .filter(|text| !text.is_empty())
+        .collect();
+    if texts.is_empty() {
+        return None;
+    }
+    log::info!("snip decoded {} barcode(s)", texts.len());
+    Some(texts.join("\n"))
 }
 
 /// 把裁剪图作为图片条目入历史,`search_text` 填 OCR 文本使 FTS 可搜。
@@ -414,4 +438,41 @@ fn monitor_scale(monitor: &xcap::Monitor) -> Result<f64> {
         .scale_factor()
         .map(f64::from)
         .map_err(|err| AppError::Other(anyhow::anyhow!("monitor scale factor: {err}")))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use rxing::Writer;
+
+    /// 用 rxing 自编码一个 QR 再走产品解码路径,验证「框选到码直接取值」链路。
+    #[test]
+    fn decodes_qr_code_in_selection() {
+        let content = "https://github.com/snipstack/SnipStack";
+        let matrix = rxing::qrcode::QRCodeWriter
+            .encode(content, &rxing::BarcodeFormat::QR_CODE, 240, 240)
+            .expect("encode qr fixture");
+
+        let mut img = RgbaImage::from_pixel(
+            matrix.width(),
+            matrix.height(),
+            image::Rgba([255, 255, 255, 255]),
+        );
+        for y in 0..matrix.height() {
+            for x in 0..matrix.width() {
+                if matrix.get(x, y) {
+                    img.put_pixel(x, y, image::Rgba([0, 0, 0, 255]));
+                }
+            }
+        }
+
+        let decoded = decode_barcodes(&img).expect("decode qr");
+        assert_eq!(decoded, content);
+    }
+
+    #[test]
+    fn plain_text_region_has_no_barcode() {
+        let img = RgbaImage::from_pixel(160, 60, image::Rgba([250, 250, 250, 255]));
+        assert!(decode_barcodes(&img).is_none());
+    }
 }

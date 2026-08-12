@@ -548,6 +548,10 @@
           "description": "Copy the recognized text to the clipboard automatically.",
           "title": "Auto Copy"
         },
+        "detectQr": {
+          "description": "Decode QR codes and barcodes found in the selection instead of running OCR.",
+          "title": "Detect QR / Barcodes"
+        },
         "lineBreak": {
           "description": "Keep original line breaks, or merge into one paragraph (no space inserted between CJK lines).",
           "options": {
@@ -555,6 +559,10 @@
             "merge": "Merge"
           },
           "title": "Line Breaks"
+        },
+        "ocrCopiedImages": {
+          "description": "Recognize copied images in the background so any screenshot can be found by its text.",
+          "title": "Index Copied Images"
         },
         "saveToHistory": {
           "description": "Store the snip image with its text so the screenshot is searchable.",

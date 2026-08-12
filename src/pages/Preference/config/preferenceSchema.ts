@@ -753,6 +753,24 @@ export const preferenceTabs: PreferenceTab[] = [
               return settings.snip.saveToHistory;
             },
           },
+          {
+            control: { type: "switch" },
+            id: "snip.detectQr",
+            keywords: ["snip", "qr", "barcode", "code"],
+            path: ["snip", "detectQr"],
+            value: (settings) => {
+              return settings.snip.detectQr;
+            },
+          },
+          {
+            control: { type: "switch" },
+            id: "snip.ocrCopiedImages",
+            keywords: ["snip", "ocr", "image", "index", "search"],
+            path: ["snip", "ocrCopiedImages"],
+            value: (settings) => {
+              return settings.snip.ocrCopiedImages;
+            },
+          },
         ],
       },
     ],

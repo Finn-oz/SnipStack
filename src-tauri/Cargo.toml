@@ -50,6 +50,8 @@ image = { version = "0.25", default-features = false, features = ["png", "jpeg"]
 xcap = "0.9"
 # 截屏取字:PP-OCRv5 ONNX 推理(内部 ort 静态链接 ONNX Runtime,无需分发动态库)。
 oar-ocr = "0.9"
+# 截屏取字:框选区域内 QR/条码解码(zxing 的 Rust 移植)。
+rxing = "0.9"
 tauri-plugin-os = "2"
 tauri-plugin-updater = "2"
 time = "0.3"

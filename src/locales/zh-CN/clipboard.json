@@ -102,6 +102,10 @@
     "switchCustomGroup": "切换自定义分组",
     "toggleRange": "切换全部 / 收藏"
   },
+  "snip": {
+    "done": "截屏取字完成,已识别 {{count}} 字",
+    "failed": "截屏取字失败:{{message}}"
+  },
   "types": {
     "color": "颜色",
     "email": "邮箱",

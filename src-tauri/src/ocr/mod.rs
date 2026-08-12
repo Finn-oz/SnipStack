@@ -3,6 +3,8 @@
 //! 引擎懒加载：首次识别时从 bundle resources 读模型构建,之后常驻复用。
 //! 构建与推理都是 CPU 密集操作,调用方必须放在 `spawn_blocking` 里,不要阻塞异步运行时。
 
+pub mod backfill;
+
 use std::path::PathBuf;
 use std::sync::{Mutex, OnceLock};
 

@@ -94,6 +94,8 @@ export interface Snip {
   lineBreak: SnipLineBreak;
   autoCopy: boolean;
   saveToHistory: boolean;
+  detectQr: boolean;
+  ocrCopiedImages: boolean;
 }
 
 export interface Content {

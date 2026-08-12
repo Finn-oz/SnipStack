@@ -32,6 +32,10 @@ pub struct Snip {
     pub auto_copy: bool,
     /// 识别结果连同截图一并存入历史(截图条目的搜索文本为 OCR 结果)。
     pub save_to_history: bool,
+    /// 框选区域内优先探测 QR/条码,命中则直接取码值,不再走 OCR。
+    pub detect_qr: bool,
+    /// 后台对复制进历史的图片做 OCR,文本进入全文搜索索引。
+    pub ocr_copied_images: bool,
 }
 
 impl Default for Snip {
@@ -40,6 +44,8 @@ impl Default for Snip {
             line_break: SnipLineBreak::Keep,
             auto_copy: true,
             save_to_history: true,
+            detect_qr: true,
+            ocr_copied_images: true,
         }
     }
 }
