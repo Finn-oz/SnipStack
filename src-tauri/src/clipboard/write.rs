@@ -324,7 +324,7 @@ mod tests {
     struct TempDir(std::path::PathBuf);
     impl TempDir {
         fn new() -> Self {
-            let p = std::env::temp_dir().join(format!("ecopaste-write-{}", uuid::Uuid::new_v4()));
+            let p = std::env::temp_dir().join(format!("snipstack-write-{}", uuid::Uuid::new_v4()));
             std::fs::create_dir_all(&p).unwrap();
             Self(p)
         }

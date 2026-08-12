@@ -100,7 +100,7 @@ mod windows {
     pub(super) fn detect() -> Option<FrontmostApp> {
         let exe_path = unsafe { foreground_exe_path() }?;
         // 自身写回事件依赖 WritebackGuard 的 content_hash 判定，这里不过滤自身——
-        // 与 macOS 行为一致：哪怕拿到的是 EcoPaste 自己，guard 也会在下游 short-circuit。
+        // 与 macOS 行为一致：哪怕拿到的是 SnipStack 自己，guard 也会在下游 short-circuit。
         let name = Path::new(&exe_path)
             .file_stem()
             .and_then(|s| s.to_str())

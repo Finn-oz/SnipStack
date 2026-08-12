@@ -16,9 +16,9 @@ use crate::core::windows_args;
 use crate::core::{AppError, Result};
 
 #[cfg(target_os = "windows")]
-const ADMIN_RESTARTED_ARG: &str = "--ecopaste-admin-restarted";
+const ADMIN_RESTARTED_ARG: &str = "--snipstack-admin-restarted";
 #[cfg(target_os = "windows")]
-const TASK_NAME: &str = "EcoPasteAdmin";
+const TASK_NAME: &str = "SnipStackAdmin";
 #[cfg(target_os = "windows")]
 const CREATE_NO_WINDOW: u32 = 0x08000000;
 #[cfg(target_os = "windows")]
@@ -346,7 +346,7 @@ fn early_run_as_admin_enabled() -> Result<bool> {
     };
 
     let bootstrap = PathBuf::from(base)
-        .join("com.ayangweb.eco-paste")
+        .join("com.snipstack.app")
         .join(env_dir());
     let data_dir = early_data_dir(&bootstrap)?;
     let settings_path = data_dir.join("config").join(SETTINGS_FILENAME);

@@ -1,15 +1,12 @@
 {
   "about": {
-    "checkUpdates": "Check for updates",
-    "sponsor": "Sponsor",
-    "sponsorHint": "If EcoPaste helps your workflow, you can support the project.",
-    "sponsorQrAlt": "Sponsor QR code"
+    "checkUpdates": "Check for updates"
   },
   "backup": {
     "export": {
       "confirmPassword": "Confirm password",
       "confirmRequired": "Enter the backup password again",
-      "encryptedHint": "The backup will be encrypted with this password. EcoPaste will not save it, and forgotten passwords cannot be recovered.",
+      "encryptedHint": "The backup will be encrypted with this password. SnipStack will not save it, and forgotten passwords cannot be recovered.",
       "modeEncrypted": "Encrypted backup (Recommended)",
       "modePlain": "Plain backup",
       "ok": "Choose Save Location",
@@ -23,11 +20,11 @@
       "plainConfirmRequired": "Confirm the plain backup risk",
       "plainWarning": "Anyone with the file can read the backup contents directly.",
       "plainWarningTitle": "Plain backups are not password protected",
-      "title": "Export EcoPaste Backup"
+      "title": "Export SnipStack Backup"
     },
-    "fileFilter": "EcoPaste Backup",
+    "fileFilter": "SnipStack Backup",
     "import": {
-      "fileFallback": "EcoPaste backup file",
+      "fileFallback": "SnipStack backup file",
       "ok": "Import",
       "overwriteConfirm": "I have read the warning and confirm overwriting current data",
       "overwriteConfirmRequired": "Confirm the overwrite import risk",
@@ -36,11 +33,11 @@
       "overwriteWarning": "Overwrite import replaces the selected current data immediately. Merge import is safer for everyday recovery; use overwrite only when the backup should become the source of truth.",
       "password": "Backup password",
       "passwordRequired": "Enter the backup password",
-      "pickTitle": "Choose EcoPaste Backup",
+      "pickTitle": "Choose SnipStack Backup",
       "strategy": "Import mode",
       "strategyMerge": "Merge Import",
       "strategyOverwrite": "Overwrite Import",
-      "title": "Import EcoPaste Backup",
+      "title": "Import SnipStack Backup",
       "typeEncrypted": "Encrypted backup, password required",
       "typePlain": "Unencrypted backup"
     },
@@ -84,7 +81,7 @@
         "title": "Appearance & Language"
       },
       "backup": {
-        "description": "Export or import EcoPaste backup packages.",
+        "description": "Export or import SnipStack backup packages.",
         "title": "Backup & Migration"
       },
       "capture": {
@@ -143,16 +140,12 @@
       "about": {
         "checkUpdates": {
           "controlLabel": "Check",
-          "description": "Check whether a new EcoPaste version is available.",
+          "description": "Check whether a new SnipStack version is available.",
           "title": "Check for Updates"
         },
         "github": {
           "controlLabel": "Open",
           "title": "GitHub"
-        },
-        "sponsor": {
-          "description": "If EcoPaste helps your workflow, you can support the project.",
-          "title": "Sponsor"
         }
       },
       "actions": {
@@ -196,7 +189,7 @@
           "title": "Maximum Image Height"
         },
         "language": {
-          "description": "Switch the EcoPaste interface language.",
+          "description": "Switch the SnipStack interface language.",
           "options": {
             "en-US": "English",
             "zh-CN": "简体中文"
@@ -224,12 +217,12 @@
       "backup": {
         "exportHistory": {
           "controlLabel": "Export",
-          "description": "Export a .ecopastebak backup, encrypted with a password by default.",
+          "description": "Export a .snipstackbak backup, encrypted with a password by default.",
           "title": "Export Backup"
         },
         "importHistory": {
           "controlLabel": "Import",
-          "description": "Import a .ecopastebak backup, with merge or overwrite recovery.",
+          "description": "Import a .snipstackbak backup, with merge or overwrite recovery.",
           "title": "Import Backup"
         }
       },
@@ -270,26 +263,26 @@
       },
       "control": {
         "autoStart": {
-          "description": "Start EcoPaste automatically after logging in.",
+          "description": "Start SnipStack automatically after logging in.",
           "macos": {
-            "description": "Start EcoPaste automatically after login.",
+            "description": "Start SnipStack automatically after login.",
             "title": "Launch at Login"
           },
           "title": "Launch at Login",
           "windows": {
-            "description": "Start EcoPaste automatically after login.",
+            "description": "Start SnipStack automatically after login.",
             "title": "Launch at Startup"
           }
         },
         "dockIcon": {
-          "description": "Show the EcoPaste icon in the system desktop bar.",
+          "description": "Show the SnipStack icon in the system desktop bar.",
           "macos": {
-            "description": "Show the EcoPaste icon in the Dock.",
+            "description": "Show the SnipStack icon in the Dock.",
             "title": "Dock Icon"
           },
           "title": "Desktop Bar Icon",
           "windows": {
-            "description": "Show the EcoPaste icon in the taskbar.",
+            "description": "Show the SnipStack icon in the taskbar.",
             "title": "Taskbar Icon"
           }
         },
@@ -299,14 +292,14 @@
           "title": "Reopen Onboarding"
         },
         "trayIcon": {
-          "description": "Show the EcoPaste icon in the system status area.",
+          "description": "Show the SnipStack icon in the system status area.",
           "macos": {
-            "description": "Show the EcoPaste icon in the menu bar.",
+            "description": "Show the SnipStack icon in the menu bar.",
             "title": "Menu Bar Icon"
           },
           "title": "Status Area Icon",
           "windows": {
-            "description": "Show the EcoPaste icon in the system tray.",
+            "description": "Show the SnipStack icon in the system tray.",
             "title": "System Tray Icon"
           }
         }
@@ -465,7 +458,7 @@
           "title": "Accessibility Permission"
         },
         "adminRestartConfirm": {
-          "content": "EcoPaste needs to restart with administrator privileges for this change to take effect. Windows may show a User Account Control prompt.",
+          "content": "SnipStack needs to restart with administrator privileges for this change to take effect. Windows may show a User Account Control prompt.",
           "ok": "Restart",
           "title": "Restart required"
         },
@@ -474,7 +467,7 @@
           "title": "Full Disk Access Permission"
         },
         "runAsAdministrator": {
-          "description": "Used to restart EcoPaste with administrator privileges and keep future launches elevated when needed.",
+          "description": "Used to restart SnipStack with administrator privileges and keep future launches elevated when needed.",
           "title": "Run as Administrator"
         }
       },
@@ -538,7 +531,7 @@
           "title": "Open Preferences Window"
         },
         "winV": {
-          "description": "Press Win+V to summon EcoPaste instead of the Windows clipboard history panel.",
+          "description": "Press Win+V to summon SnipStack instead of the Windows clipboard history panel.",
           "title": "Take Over Win+V"
         }
       },
@@ -560,7 +553,7 @@
       },
       "updates": {
         "autoCheck": {
-          "description": "Periodically check whether a new EcoPaste version is available.",
+          "description": "Periodically check whether a new SnipStack version is available.",
           "title": "Automatically Check for Updates"
         },
         "beta": {
@@ -568,7 +561,7 @@
           "title": "Receive Beta Updates"
         },
         "frequency": {
-          "description": "Set how often EcoPaste checks for updates.",
+          "description": "Set how often SnipStack checks for updates.",
           "options": {
             "daily": "Daily",
             "monthly": "Monthly",
@@ -679,7 +672,7 @@
     "open": "Open data directory",
     "pickTitle": "Choose New Data Directory Location",
     "reset": "Reset to default directory",
-    "resetConfirmContent": "EcoPaste will move the current history database, settings, and resource cache back to the default data directory, then delete the current custom data directory after migration succeeds.",
+    "resetConfirmContent": "SnipStack will move the current history database, settings, and resource cache back to the default data directory, then delete the current custom data directory after migration succeeds.",
     "resetConfirmTitle": "Reset Data Directory"
   }
 }

@@ -255,7 +255,7 @@ pub fn build_clipboard_preview_window(app: &AppHandle) -> Result<()> {
         CLIPBOARD_PREVIEW_WINDOW_LABEL,
         WebviewUrl::App("index.html/#/preview".into()),
     )
-    .title("EcoPaste Preview")
+    .title("SnipStack Preview")
     .inner_size(1.0, 1.0)
     .resizable(false)
     .maximizable(false)

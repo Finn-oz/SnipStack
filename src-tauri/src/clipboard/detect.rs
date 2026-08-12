@@ -280,7 +280,7 @@ mod tests {
     #[test]
     fn detects_existing_absolute_path_only() {
         let dir = std::env::temp_dir();
-        let file = dir.join(format!("ecopaste-detect-{}.txt", uuid::Uuid::new_v4()));
+        let file = dir.join(format!("snipstack-detect-{}.txt", uuid::Uuid::new_v4()));
         std::fs::write(&file, b"x").unwrap();
 
         assert_eq!(

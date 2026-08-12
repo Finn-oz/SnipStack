@@ -428,7 +428,7 @@ mod tests {
         impl TempDir {
             pub fn new() -> Self {
                 let path = std::env::temp_dir()
-                    .join(format!("ecopaste-imgstore-{}", uuid::Uuid::new_v4()));
+                    .join(format!("snipstack-imgstore-{}", uuid::Uuid::new_v4()));
                 std::fs::create_dir_all(&path).unwrap();
                 Self(path)
             }

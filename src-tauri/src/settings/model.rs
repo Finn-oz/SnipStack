@@ -25,7 +25,7 @@ pub struct Settings {
 #[serde(default, rename_all = "camelCase")]
 pub struct General {
     pub auto_start: bool,
-    /// Windows: persist the user's intent to run EcoPaste with administrator privileges.
+    /// Windows: persist the user's intent to run SnipStack with administrator privileges.
     pub run_as_admin: bool,
     /// macOS 菜单栏 / Windows 系统托盘图标。
     pub tray_icon: bool,

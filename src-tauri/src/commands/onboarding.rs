@@ -569,14 +569,14 @@ fn legacy_database_file_names(env: LegacyEnvironment) -> &'static [&'static str]
         LegacyEnvironment::Dev => &[
             ".store.dev.db",
             ".window-state.dev.db",
-            "EcoPaste.dev.db",
-            "EcoPaste.v2.dev.db",
+            "SnipStack.dev.db",
+            "SnipStack.v2.dev.db",
         ],
         LegacyEnvironment::Prod => &[
             ".store.db",
             ".window-state.db",
-            "EcoPaste.db",
-            "EcoPaste.v2.db",
+            "SnipStack.db",
+            "SnipStack.v2.db",
         ],
     }
 }
@@ -586,14 +586,14 @@ fn legacy_other_environment_database_file_names(env: LegacyEnvironment) -> &'sta
         LegacyEnvironment::Dev => &[
             ".store.db",
             ".window-state.db",
-            "EcoPaste.db",
-            "EcoPaste.v2.db",
+            "SnipStack.db",
+            "SnipStack.v2.db",
         ],
         LegacyEnvironment::Prod => &[
             ".store.dev.db",
             ".window-state.dev.db",
-            "EcoPaste.dev.db",
-            "EcoPaste.v2.dev.db",
+            "SnipStack.dev.db",
+            "SnipStack.v2.dev.db",
         ],
     }
 }
@@ -633,6 +633,8 @@ fn default_legacy_data_candidates() -> Vec<PathBuf> {
     {
         if let Some(home) = std::env::var_os("HOME") {
             let base = PathBuf::from(home).join("Library/Application Support");
+            // 候选目录保留上游 EcoPaste 的路径:导入逻辑面向旧版 EcoPaste 数据格式,
+            // 对 SnipStack 而言即「从 EcoPaste 迁移」。
             candidates.push(base.join("com.ayangweb.EcoPaste"));
             candidates.push(base.join("EcoPaste"));
         }
@@ -1075,8 +1077,8 @@ mod tests {
             [
                 ".store.dev.db",
                 ".window-state.dev.db",
-                "EcoPaste.dev.db",
-                "EcoPaste.v2.dev.db",
+                "SnipStack.dev.db",
+                "SnipStack.v2.dev.db",
             ]
         );
         assert_eq!(
@@ -1084,8 +1086,8 @@ mod tests {
             [
                 ".store.db",
                 ".window-state.db",
-                "EcoPaste.db",
-                "EcoPaste.v2.db"
+                "SnipStack.db",
+                "SnipStack.v2.db"
             ]
         );
 
@@ -1094,8 +1096,8 @@ mod tests {
             [
                 ".store.db",
                 ".window-state.db",
-                "EcoPaste.db",
-                "EcoPaste.v2.db"
+                "SnipStack.db",
+                "SnipStack.v2.db"
             ]
         );
         assert_eq!(
@@ -1103,17 +1105,17 @@ mod tests {
             [
                 ".store.dev.db",
                 ".window-state.dev.db",
-                "EcoPaste.dev.db",
-                "EcoPaste.v2.dev.db",
+                "SnipStack.dev.db",
+                "SnipStack.v2.dev.db",
             ]
         );
 
         assert_eq!(
-            is_legacy_database_file(Path::new("EcoPaste.dev.db")),
+            is_legacy_database_file(Path::new("SnipStack.dev.db")),
             current_legacy_environment() == LegacyEnvironment::Dev
         );
         assert_eq!(
-            is_legacy_database_file(Path::new("EcoPaste.db")),
+            is_legacy_database_file(Path::new("SnipStack.db")),
             current_legacy_environment() == LegacyEnvironment::Prod
         );
     }

@@ -1,15 +1,12 @@
 {
   "about": {
-    "checkUpdates": "检查更新",
-    "sponsor": "赞赏支持",
-    "sponsorHint": "如果 EcoPaste 帮到了你，可以给项目一点支持。",
-    "sponsorQrAlt": "赞赏二维码"
+    "checkUpdates": "检查更新"
   },
   "backup": {
     "export": {
       "confirmPassword": "确认密码",
       "confirmRequired": "请再次输入备份密码",
-      "encryptedHint": "备份会用你输入的密码加密。EcoPaste 不会保存密码，忘记后无法恢复。",
+      "encryptedHint": "备份会用你输入的密码加密。SnipStack 不会保存密码，忘记后无法恢复。",
       "modeEncrypted": "加密备份（推荐）",
       "modePlain": "明文备份",
       "ok": "选择保存位置",
@@ -23,11 +20,11 @@
       "plainConfirmRequired": "请确认明文备份风险",
       "plainWarning": "任何拿到文件的人都可以直接读取备份内容。",
       "plainWarningTitle": "明文备份不受密码保护",
-      "title": "导出 EcoPaste 备份"
+      "title": "导出 SnipStack 备份"
     },
-    "fileFilter": "EcoPaste 备份",
+    "fileFilter": "SnipStack 备份",
     "import": {
-      "fileFallback": "EcoPaste 备份文件",
+      "fileFallback": "SnipStack 备份文件",
       "ok": "导入",
       "overwriteConfirm": "我已阅读风险提示，确认覆盖当前数据",
       "overwriteConfirmRequired": "请确认覆盖导入风险",
@@ -36,11 +33,11 @@
       "overwriteWarning": "覆盖导入会立即替换已选择的当前数据。合并导入更适合日常恢复；只有确定要以备份为准时再选择覆盖。",
       "password": "备份密码",
       "passwordRequired": "请输入备份密码",
-      "pickTitle": "选择 EcoPaste 备份",
+      "pickTitle": "选择 SnipStack 备份",
       "strategy": "导入方式",
       "strategyMerge": "合并导入",
       "strategyOverwrite": "覆盖导入",
-      "title": "导入 EcoPaste 备份",
+      "title": "导入 SnipStack 备份",
       "typeEncrypted": "加密备份，导入时需要密码",
       "typePlain": "未加密备份"
     },
@@ -84,7 +81,7 @@
         "title": "外观与语言"
       },
       "backup": {
-        "description": "导出或导入 EcoPaste 备份包。",
+        "description": "导出或导入 SnipStack 备份包。",
         "title": "备份迁移"
       },
       "capture": {
@@ -143,16 +140,12 @@
       "about": {
         "checkUpdates": {
           "controlLabel": "检查更新",
-          "description": "检查 EcoPaste 是否有可用的新版本。",
+          "description": "检查 SnipStack 是否有可用的新版本。",
           "title": "检查更新"
         },
         "github": {
           "controlLabel": "打开",
           "title": "GitHub"
-        },
-        "sponsor": {
-          "description": "如果 EcoPaste 帮到了你，可以给项目一点支持。",
-          "title": "赞赏支持"
         }
       },
       "actions": {
@@ -196,7 +189,7 @@
           "title": "图片最大显示高度"
         },
         "language": {
-          "description": "切换 EcoPaste 的界面语言。",
+          "description": "切换 SnipStack 的界面语言。",
           "options": {
             "en-US": "English",
             "zh-CN": "简体中文"
@@ -224,12 +217,12 @@
       "backup": {
         "exportHistory": {
           "controlLabel": "导出",
-          "description": "导出 .ecopastebak 备份包，默认使用密码加密。",
+          "description": "导出 .snipstackbak 备份包，默认使用密码加密。",
           "title": "导出备份"
         },
         "importHistory": {
           "controlLabel": "导入",
-          "description": "导入 .ecopastebak 备份包，支持合并或覆盖恢复。",
+          "description": "导入 .snipstackbak 备份包，支持合并或覆盖恢复。",
           "title": "导入备份"
         }
       },
@@ -270,26 +263,26 @@
       },
       "control": {
         "autoStart": {
-          "description": "登录系统后自动启动 EcoPaste。",
+          "description": "登录系统后自动启动 SnipStack。",
           "macos": {
-            "description": "登录后自动启动 EcoPaste。",
+            "description": "登录后自动启动 SnipStack。",
             "title": "登录时启动"
           },
           "title": "开机启动",
           "windows": {
-            "description": "登录后自动启动 EcoPaste。",
+            "description": "登录后自动启动 SnipStack。",
             "title": "开机启动"
           }
         },
         "dockIcon": {
-          "description": "在系统桌面栏显示 EcoPaste 图标。",
+          "description": "在系统桌面栏显示 SnipStack 图标。",
           "macos": {
-            "description": "在程序坞显示 EcoPaste 图标。",
+            "description": "在程序坞显示 SnipStack 图标。",
             "title": "程序坞图标"
           },
           "title": "桌面栏图标",
           "windows": {
-            "description": "在任务栏显示 EcoPaste 图标。",
+            "description": "在任务栏显示 SnipStack 图标。",
             "title": "任务栏图标"
           }
         },
@@ -299,14 +292,14 @@
           "title": "重新打开引导"
         },
         "trayIcon": {
-          "description": "在系统状态栏显示 EcoPaste 图标。",
+          "description": "在系统状态栏显示 SnipStack 图标。",
           "macos": {
-            "description": "在菜单栏显示 EcoPaste 图标。",
+            "description": "在菜单栏显示 SnipStack 图标。",
             "title": "菜单栏图标"
           },
           "title": "状态栏图标",
           "windows": {
-            "description": "在系统托盘显示 EcoPaste 图标。",
+            "description": "在系统托盘显示 SnipStack 图标。",
             "title": "系统托盘图标"
           }
         }
@@ -465,7 +458,7 @@
           "title": "辅助功能访问权限"
         },
         "adminRestartConfirm": {
-          "content": "EcoPaste 需要以管理员权限重启后，此设置才会生效。Windows 可能会弹出用户账户控制确认窗口。",
+          "content": "SnipStack 需要以管理员权限重启后，此设置才会生效。Windows 可能会弹出用户账户控制确认窗口。",
           "ok": "重启",
           "title": "需要重启"
         },
@@ -474,7 +467,7 @@
           "title": "完全磁盘访问权限"
         },
         "runAsAdministrator": {
-          "description": "用于以管理员权限重启 EcoPaste，并在需要时让后续启动保持提权运行。",
+          "description": "用于以管理员权限重启 SnipStack，并在需要时让后续启动保持提权运行。",
           "title": "管理员权限启动"
         }
       },
@@ -538,7 +531,7 @@
           "title": "打开偏好设置窗口"
         },
         "winV": {
-          "description": "按 Win+V 唤起 EcoPaste，替代 Windows 系统剪贴板历史面板。",
+          "description": "按 Win+V 唤起 SnipStack，替代 Windows 系统剪贴板历史面板。",
           "title": "接管 Win+V"
         }
       },
@@ -560,7 +553,7 @@
       },
       "updates": {
         "autoCheck": {
-          "description": "定期检查 EcoPaste 是否有可用的新版本。",
+          "description": "定期检查 SnipStack 是否有可用的新版本。",
           "title": "自动检查更新"
         },
         "beta": {

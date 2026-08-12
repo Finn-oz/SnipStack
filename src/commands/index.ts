@@ -404,7 +404,7 @@ export const finishOnboarding = () => {
 };
 
 /**
- * 只读检测旧版 EcoPaste 数据目录，不执行导入。
+ * 只读检测旧版 SnipStack 数据目录，不执行导入。
  */
 export const detectLegacyData = () => {
   return call<OnboardingLegacyDataDetection>(
@@ -628,7 +628,7 @@ export const openPreferenceDirectory = (target: PreferenceDirectoryTarget) => {
 };
 
 /**
- * 导出历史数据库、资源和设置为 `.ecopastebak` 备份包。
+ * 导出历史数据库、资源和设置为 `.snipstackbak` 备份包。
  */
 export const exportHistoryBackup = async (
   targetPath: string,
@@ -654,7 +654,7 @@ export const exportHistoryBackup = async (
 };
 
 /**
- * 识别 `.ecopastebak` 文件并广播给偏好页导入接收壳。
+ * 识别 `.snipstackbak` 文件并广播给偏好页导入接收壳。
  */
 export const inspectHistoryBackup = (input: InspectHistoryBackupInput) => {
   return call<BackupContainerMode>(
@@ -710,7 +710,7 @@ export const takePendingPreferenceHighlight = async () => {
 };
 
 /**
- * 从 `.ecopastebak` 备份包导入历史和/或设置。
+ * 从 `.snipstackbak` 备份包导入历史和/或设置。
  */
 export const importHistoryBackup = async (
   input: ImportHistoryBackupInput,

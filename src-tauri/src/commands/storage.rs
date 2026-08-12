@@ -16,7 +16,7 @@ use crate::settings::Settings;
 const SETTINGS_UPDATED_EVENT: &str = "settings://updated";
 const CLIPBOARD_UPDATED_EVENT: &str = "clipboard://updated";
 const STORAGE_CONTENT_DIRS: [&str; 4] = ["db", "resources", "config", "state"];
-const CUSTOM_STORAGE_CONTAINER_DIR: &str = "EcoPasteData";
+const CUSTOM_STORAGE_CONTAINER_DIR: &str = "SnipStackData";
 
 /// 偏好页侧栏展示的本地存储占用概览。
 #[derive(Debug, Clone, Serialize)]
@@ -589,8 +589,8 @@ mod tests {
 
     impl TempDir {
         fn new() -> Self {
-            let path =
-                std::env::temp_dir().join(format!("ecopaste-clean-cache-{}", uuid::Uuid::new_v4()));
+            let path = std::env::temp_dir()
+                .join(format!("snipstack-clean-cache-{}", uuid::Uuid::new_v4()));
             fs::create_dir_all(&path).unwrap();
 
             Self(path)
@@ -647,7 +647,7 @@ mod tests {
     fn bootstrap_storage_cleanup_keeps_only_manifest() {
         let temp = TempDir::new();
         fs::write(temp.path().join("storage.json"), "{}").unwrap();
-        fs::write(temp.path().join(".ecopaste-storage.json"), "{}").unwrap();
+        fs::write(temp.path().join(".snipstack-storage.json"), "{}").unwrap();
         fs::create_dir_all(temp.path().join("db")).unwrap();
         fs::write(temp.path().join("db").join("clipboard.db"), b"db").unwrap();
         fs::create_dir_all(temp.path().join("resources")).unwrap();
@@ -656,7 +656,7 @@ mod tests {
         remove_bootstrap_storage_payload(temp.path()).unwrap();
 
         assert!(temp.path().join("storage.json").exists());
-        assert!(!temp.path().join(".ecopaste-storage.json").exists());
+        assert!(!temp.path().join(".snipstack-storage.json").exists());
         assert!(!temp.path().join("db").exists());
         assert!(!temp.path().join("resources").exists());
     }
@@ -664,20 +664,20 @@ mod tests {
     #[test]
     fn remove_custom_storage_root_deletes_empty_container() {
         let temp = TempDir::new();
-        let root = temp.path().join("EcoPasteData").join("dev");
+        let root = temp.path().join("SnipStackData").join("dev");
         fs::create_dir_all(root.join("config")).unwrap();
         fs::write(root.join("config").join("settings.json"), "{}").unwrap();
 
         remove_custom_storage_root(&root).unwrap();
 
         assert!(!root.exists());
-        assert!(!temp.path().join("EcoPasteData").exists());
+        assert!(!temp.path().join("SnipStackData").exists());
     }
 
     #[test]
     fn remove_custom_storage_root_keeps_container_with_sibling_environment() {
         let temp = TempDir::new();
-        let container = temp.path().join("EcoPasteData");
+        let container = temp.path().join("SnipStackData");
         let root = container.join("dev");
         fs::create_dir_all(root.join("config")).unwrap();
         fs::write(root.join("config").join("settings.json"), "{}").unwrap();

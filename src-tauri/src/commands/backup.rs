@@ -1,4 +1,4 @@
-//! 备份相关命令：导出 `.ecopastebak` 与接收壳识别。
+//! 备份相关命令：导出 `.snipstackbak` 与接收壳识别。
 
 use std::path::PathBuf;
 
@@ -37,7 +37,7 @@ impl From<BackupReceiveSourceInput> for BackupReceiveSource {
     }
 }
 
-/// 导出当前历史数据为 `.ecopastebak` 备份包。
+/// 导出当前历史数据为 `.snipstackbak` 备份包。
 #[tauri::command]
 pub async fn export_history_backup(
     app: AppHandle,
@@ -74,7 +74,7 @@ pub async fn take_pending_backup() -> Option<BackupReceivedPayload> {
     crate::backup::take_pending_backup()
 }
 
-/// 导入 `.ecopastebak` 备份包；合并立即写入，覆盖热替换当前数据。
+/// 导入 `.snipstackbak` 备份包；合并立即写入，覆盖热替换当前数据。
 #[tauri::command]
 pub async fn import_history_backup(
     app: AppHandle,

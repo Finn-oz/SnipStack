@@ -1,0 +1,9 @@
+SnipStack
+Copyright 2026 SnipStack Contributors
+
+This product is a hard fork of EcoPaste (https://github.com/EcoPasteHub/EcoPaste),
+Copyright 2026 ayangweb, licensed under the Apache License, Version 2.0.
+
+The clipboard history infrastructure (clipboard watcher, SQLite FTS5 storage,
+window management, settings, backup) originates from EcoPaste. Screen-capture
+OCR, QR decoding, and related additions are original to SnipStack.

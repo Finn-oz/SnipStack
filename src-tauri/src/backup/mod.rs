@@ -1,6 +1,6 @@
-//! EcoPaste 历史备份包导出与接收壳识别。
+//! SnipStack 历史备份包导出与接收壳识别。
 //!
-//! `.ecopastebak` 有两种格式：明文模式是标准 ZIP；加密模式是 EcoPaste 自有容器。
+//! `.snipstackbak` 有两种格式：明文模式是标准 ZIP；加密模式是 SnipStack 自有容器。
 
 use std::fs::{self, File};
 use std::io::{BufReader, BufWriter, Cursor, Read, Seek, Write};
@@ -27,10 +27,10 @@ use zip::{CompressionMethod, ZipArchive, ZipWriter};
 
 use crate::core::{AppError, Result};
 
-pub const BACKUP_EXTENSION: &str = "ecopastebak";
+pub const BACKUP_EXTENSION: &str = "snipstackbak";
 pub const BACKUP_RECEIVED_EVENT: &str = "backup://received";
 
-const MAGIC: &[u8; 12] = b"ECOPASTEBAK1";
+const MAGIC: &[u8; 12] = b"SNIPSTACKBK1";
 const ZIP_MAGIC: &[u8; 2] = b"PK";
 const HEADER_LEN_BYTES: usize = 4;
 const FORMAT_VERSION: u16 = 1;
@@ -214,7 +214,7 @@ struct BackupSourcePaths {
     settings_path: PathBuf,
 }
 
-/// 导出当前环境历史数据库、资源文件和设置为 `.ecopastebak` 备份包。
+/// 导出当前环境历史数据库、资源文件和设置为 `.snipstackbak` 备份包。
 pub async fn export_history_backup(
     app: &AppHandle,
     pool: &SqlitePool,
@@ -248,7 +248,7 @@ pub async fn export_history_backup(
     })
 }
 
-/// 从 `.ecopastebak` 导入历史和设置；合并写入当前库，覆盖热替换当前数据。
+/// 从 `.snipstackbak` 导入历史和设置；合并写入当前库，覆盖热替换当前数据。
 pub async fn import_history_backup(
     app: &AppHandle,
     db: &crate::db::DatabaseState,
@@ -272,7 +272,7 @@ pub async fn import_history_backup(
     }
 }
 
-/// 识别 `.ecopastebak` 文件头并返回容器模式；不解密、不导入。
+/// 识别 `.snipstackbak` 文件头并返回容器模式；不解密、不导入。
 pub fn inspect_backup_file(path: &Path) -> Result<BackupContainerMode> {
     ensure_backup_extension(path)?;
 
@@ -385,14 +385,14 @@ pub fn mark_app_ready(app: &AppHandle) {
     }
 }
 
-/// 从进程参数中查找 `.ecopastebak` 路径，供 Windows 文件关联和第二实例回调使用。
+/// 从进程参数中查找 `.snipstackbak` 路径，供 Windows 文件关联和第二实例回调使用。
 pub fn backup_path_from_args(args: &[String]) -> Option<PathBuf> {
     args.iter()
         .map(PathBuf::from)
         .find(|path| is_backup_path(path))
 }
 
-/// 判断路径是否看起来是 EcoPaste 备份包。
+/// 判断路径是否看起来是 SnipStack 备份包。
 pub fn is_backup_path(path: &Path) -> bool {
     path.extension()
         .and_then(|value| value.to_str())
@@ -830,7 +830,7 @@ fn read_backup_payload(path: &Path, password: Option<&str>) -> Result<Vec<u8>> {
         return Ok(bytes);
     }
     if !bytes.starts_with(MAGIC) {
-        return app_error("不是有效的 EcoPaste 备份文件");
+        return app_error("不是有效的 SnipStack 备份文件");
     }
 
     let mut cursor = Cursor::new(bytes.as_slice());
@@ -928,7 +928,7 @@ fn inspect_backup_reader<R: Read>(reader: &mut R) -> Result<BackupContainerMode>
         return Ok(BackupContainerMode::Plain);
     }
 
-    app_error("不是有效的 EcoPaste 备份文件")
+    app_error("不是有效的 SnipStack 备份文件")
 }
 
 fn read_container_header_after_magic<R: Read>(reader: &mut R) -> Result<ContainerHeader> {
@@ -1461,14 +1461,14 @@ mod tests {
 
     #[test]
     fn backup_extension_validation_accepts_expected_suffix() {
-        let path = normalize_backup_path(PathBuf::from("demo.ecopastebak")).unwrap();
-        assert_eq!(path, PathBuf::from("demo.ecopastebak"));
+        let path = normalize_backup_path(PathBuf::from("demo.snipstackbak")).unwrap();
+        assert_eq!(path, PathBuf::from("demo.snipstackbak"));
     }
 
     #[test]
     fn backup_extension_validation_appends_missing_suffix() {
         let path = normalize_backup_path(PathBuf::from("demo")).unwrap();
-        assert_eq!(path, PathBuf::from("demo.ecopastebak"));
+        assert_eq!(path, PathBuf::from("demo.snipstackbak"));
     }
 
     #[test]
@@ -1528,10 +1528,10 @@ mod tests {
         fs::write(resources.join("clipboard-images/origin/demo.png"), b"image").unwrap();
 
         let payload = root.join("payload.zip");
-        let target = root.join("backup.ecopastebak");
+        let target = root.join("backup.snipstackbak");
         let manifest = BackupManifest {
             format_version: FORMAT_VERSION,
-            app_name: "EcoPaste".to_owned(),
+            app_name: "SnipStack".to_owned(),
             app_version: "0.0.0".to_owned(),
             exported_at: Utc::now(),
             platform: "macos".to_owned(),

@@ -434,7 +434,7 @@ mod tests {
         let item = {
             let _serial = crate::clipboard::test_lock::serial();
             let ctx = ClipboardContext::new().unwrap();
-            ctx.set_text("e2e ecopaste watcher".to_owned()).unwrap();
+            ctx.set_text("e2e snipstack watcher".to_owned()).unwrap();
 
             let reader = ClipboardReader::new().unwrap();
             let payload = reader
@@ -456,7 +456,7 @@ mod tests {
                 .unwrap()
                 .unwrap()
                 .content,
-            "e2e ecopaste watcher"
+            "e2e snipstack watcher"
         );
 
         // 同内容再来一次：命中去重，use_count 累加，不新增行。
@@ -553,7 +553,8 @@ mod tests {
     struct TempDir(std::path::PathBuf);
     impl TempDir {
         fn new() -> Self {
-            let p = std::env::temp_dir().join(format!("ecopaste-watcher-{}", uuid::Uuid::new_v4()));
+            let p =
+                std::env::temp_dir().join(format!("snipstack-watcher-{}", uuid::Uuid::new_v4()));
             std::fs::create_dir_all(&p).unwrap();
             Self(p)
         }

@@ -81,9 +81,9 @@ pub async fn read_clipboard(
     registry: State<'_, AppsRegistry>,
 ) -> Result<Option<ReadClipboardResult>> {
     // 先在同步段抓前台应用 + 读取剪贴板。
-    // 注意：手动「重新读取」时前台应用就是 EcoPaste 自己，不像 OS 监听场景能拿到原应用——
+    // 注意：手动「重新读取」时前台应用就是 SnipStack 自己，不像 OS 监听场景能拿到原应用——
     // 这里仍保留探测：若用户在外部应用复制后立刻命令式触发，多少能捕获到正确来源；
-    // 命中我们自己也无害（apps 表只是多记一条「EcoPaste」）。
+    // 命中我们自己也无害（apps 表只是多记一条「SnipStack」）。
     let (item_opt, source) = {
         let source = detect_frontmost();
         let reader = ClipboardReader::new()?;
@@ -784,7 +784,7 @@ fn compute_available_actions(item: &ClipboardItem) -> Vec<ClipboardAction> {
 fn default_saved_image_file_name(item: &ClipboardItem) -> String {
     let local = item.created_at.with_timezone(&Local);
 
-    format!("EcoPaste-image-{}.png", local.format("%Y%m%d-%H%M%S"))
+    format!("SnipStack-image-{}.png", local.format("%Y%m%d-%H%M%S"))
 }
 
 /// 保存文件对话框会短暂转移焦点；期间暂停剪贴板窗口失焦/外部点击自动隐藏。

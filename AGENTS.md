@@ -1,14 +1,16 @@
 # AGENTS.md
 
 > 本文件是本项目 AI 编码工具的**单一真相源**。其它工具入口若存在，只应引用本文件，不要重复维护规则。
-> 分阶段 backlog 已迁移到 `.trellis/tasks/`，每个任务的 PRD 与研究资料以 Trellis task 为准。
 
-EcoPaste 是跨平台剪贴板管理器，采用 Rust-First 的 Tauri 架构。
+SnipStack 是「截屏取字 OCR + 剪贴板历史」工具，采用 Rust-First 的 Tauri 架构，
+硬分叉自 EcoPaste（剪贴板历史基础设施来自上游，见 NOTICE）。
 
 ## 快速原则
 
 - **Rust-First**：业务、系统能力、数据库与持久化优先放 Rust；前端只做展示与交互。
-- **仅支持 macOS + Windows**：不要新增 Linux 代码、依赖、构建产物或文档承诺。
+- **主平台是 Windows 11**：新功能只要求 Windows 实现与测试。继承的 macOS 代码保持可编译
+  （便于在 Mac 上 `cargo check`），但不新增 macOS 特性、不承诺 macOS 支持；不要新增 Linux
+  代码、依赖、构建产物或文档承诺。
 - **已发布版本按发布数据处理**：数据结构、配置格式、默认值和 migration 变更必须有明确迁移策略，不再直接覆盖已发布数据契约。
 - **主动演进当前项目**：实现新能力时以当前代码、产品需求和平台约束为准，把当前仓库作为唯一实现基线。
 - **尊重 dirty worktree**：不要回滚或覆盖非本轮改动；需要动到已修改文件时先读清楚。
@@ -65,7 +67,9 @@ src-tauri/
     tray/       # 托盘菜单
     menu/       # 列表项右键菜单（macOS muda / Windows webview 窗）
     drag_out/   # OS 级拖出（文件/图片/文本拖到外部应用）
-    backup/     # .ecopastebak 历史备份导出与接收
+    backup/     # .snipstackbak 历史备份导出与接收
+    capture/    # (规划中, M1) 截屏冻结帧与每显示器框选覆盖层(仅 windows)
+    ocr/        # (规划中, M1) OCR 推理管线(PP-OCRv5 ONNX)与 QR 解码
     i18n/       # Rust 侧用户可见文案（托盘、菜单、命令 toast）
     autostart/  # 开机自启
     settings/   # 设置模型与持久化

@@ -1,17 +1,17 @@
 {
-  "name": "eco-paste",
+  "name": "snipstack",
   "private": true,
-  "version": "1.1.0",
+  "version": "0.1.0",
   "description": "A local-first clipboard manager for macOS and Windows.",
-  "author": "ayangweb",
+  "author": "SnipStack Contributors",
   "license": "Apache-2.0",
-  "homepage": "https://github.com/EcoPasteHub/EcoPaste#readme",
+  "homepage": "https://github.com/snipstack/SnipStack#readme",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/EcoPasteHub/EcoPaste.git"
+    "url": "git+https://github.com/snipstack/SnipStack.git"
   },
   "bugs": {
-    "url": "https://github.com/EcoPasteHub/EcoPaste/issues"
+    "url": "https://github.com/snipstack/SnipStack/issues"
   },
   "type": "module",
   "packageManager": "pnpm@10.33.1",

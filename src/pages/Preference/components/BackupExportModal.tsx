@@ -10,7 +10,7 @@ import {
 } from "@/commands";
 import { log } from "@/utils/log";
 
-const BACKUP_EXTENSION = "ecopastebak";
+const BACKUP_EXTENSION = "snipstackbak";
 const PLAIN_READ_SECONDS = 3;
 
 interface BackupExportModalProps {
@@ -27,7 +27,7 @@ interface BackupExportForm {
 }
 
 /**
- * 采集备份导出模式和密码，并把保存路径交给 Rust 生成 `.ecopastebak`。
+ * 采集备份导出模式和密码，并把保存路径交给 Rust 生成 `.snipstackbak`。
  */
 const BackupExportModal: FC<BackupExportModalProps> = (props) => {
   const { t } = useTranslation(["preferences", "common"]);
@@ -126,7 +126,7 @@ const BackupExportModal: FC<BackupExportModalProps> = (props) => {
     ].join("");
 
     return await save({
-      defaultPath: `EcoPaste-Backup-${stamp}.${BACKUP_EXTENSION}`,
+      defaultPath: `SnipStack-Backup-${stamp}.${BACKUP_EXTENSION}`,
       filters: [
         {
           extensions: [BACKUP_EXTENSION],

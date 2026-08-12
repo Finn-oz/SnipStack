@@ -10,13 +10,13 @@
     "skip": "Skip This Version"
   },
   "description": {
-    "available": "EcoPaste {{version}} is now available. You are currently running {{currentVersion}}. Would you like to install it now?",
-    "checkError": "EcoPaste could not check for updates. Please try again later.",
+    "available": "SnipStack {{version}} is now available. You are currently running {{currentVersion}}. Would you like to install it now?",
+    "checkError": "SnipStack could not check for updates. Please try again later.",
     "checking": "Connecting to the update server. Please wait.",
     "downloaded": "The update has been downloaded and is ready to install.",
-    "downloading": "Downloading EcoPaste {{version}}. Please wait.",
+    "downloading": "Downloading SnipStack {{version}}. Please wait.",
     "error": "Something went wrong while checking or installing the update.",
-    "idle": "Check whether a new EcoPaste version is available.",
+    "idle": "Check whether a new SnipStack version is available.",
     "latest": "You are already using the latest version, {{currentVersion}}.",
     "updateError": "Something went wrong while updating. Please try again."
   },
@@ -28,20 +28,20 @@
     "title": "Release Notes:"
   },
   "status": {
-    "available": "A new version of EcoPaste is available!",
+    "available": "A new version of SnipStack is available!",
     "checkError": "Could not check for updates",
     "checking": "Checking for updates...",
     "downloaded": "Ready to install",
     "downloading": "Downloading update...",
     "error": "Update failed",
     "idle": "Software Update",
-    "latest": "EcoPaste is up to date",
+    "latest": "SnipStack is up to date",
     "updateError": "Update failed"
   },
   "title": {
     "checking": "Software Update",
-    "downloading": "Updating EcoPaste",
+    "downloading": "Updating SnipStack",
     "idle": "Software Update",
-    "ready": "Updating EcoPaste"
+    "ready": "Updating SnipStack"
   }
 }

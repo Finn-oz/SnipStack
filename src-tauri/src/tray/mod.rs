@@ -24,7 +24,7 @@ use crate::window::CLIPBOARD_WINDOW_LABEL;
 use crate::window::{self, PREFERENCE_WINDOW_LABEL};
 
 const TRAY_ID: &str = "app-tray";
-const GITHUB_URL: &str = "https://github.com/EcoPasteHub/EcoPaste";
+const GITHUB_URL: &str = "https://github.com/snipstack/SnipStack";
 
 const MENU_PREFERENCE: &str = "tray::preference";
 const MENU_TOGGLE_LISTEN: &str = "tray::toggle_listen";
@@ -48,7 +48,7 @@ pub fn init(app: &AppHandle, settings: &Settings) -> Result<()> {
         .icon(icon)
         .icon_as_template(cfg!(target_os = "macos"))
         .show_menu_on_left_click(cfg!(target_os = "macos"))
-        .tooltip(format!("EcoPaste v{version}"))
+        .tooltip(format!("SnipStack v{version}"))
         .menu(&menu)
         .on_menu_event(|app, event| handle_menu_event(app, event.id().as_ref()))
         .on_tray_icon_event(|tray, event| {

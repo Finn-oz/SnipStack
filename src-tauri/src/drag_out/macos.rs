@@ -51,7 +51,7 @@ pub enum DragResult {
 define_class!(
     #[unsafe(super(NSObject))]
     #[thread_kind = MainThreadOnly]
-    #[name = "EcoPasteDragSource"]
+    #[name = "SnipStackDragSource"]
     #[ivars = DragSourceIvars]
     struct DragSource;
 

@@ -50,8 +50,8 @@ mod tests {
     #[test]
     fn quote_arg_wraps_spaces() {
         assert_eq!(
-            quote_arg(r"C:\Program Files\EcoPaste\EcoPaste.exe"),
-            r#""C:\Program Files\EcoPaste\EcoPaste.exe""#
+            quote_arg(r"C:\Program Files\SnipStack\SnipStack.exe"),
+            r#""C:\Program Files\SnipStack\SnipStack.exe""#
         );
     }
 

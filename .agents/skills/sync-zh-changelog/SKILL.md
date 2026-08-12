@@ -1,11 +1,11 @@
 ---
 name: sync-zh-changelog
-description: "Synchronize an EcoPaste release section from CHANGELOG.md into CHANGELOG.zh-CN.md with project terminology and structural validation. Use when the user explicitly invokes $sync-zh-changelog or asks to generate, translate, update, or verify the Chinese changelog for a release."
+description: "Synchronize an SnipStack release section from CHANGELOG.md into CHANGELOG.zh-CN.md with project terminology and structural validation. Use when the user explicitly invokes $sync-zh-changelog or asks to generate, translate, update, or verify the Chinese changelog for a release."
 ---
 
 # Sync Chinese Changelog
 
-Synchronize one EcoPaste release from `CHANGELOG.md` to
+Synchronize one SnipStack release from `CHANGELOG.md` to
 `CHANGELOG.zh-CN.md` without changing release metadata or unrelated files.
 
 ## Trellis routing
@@ -30,7 +30,7 @@ Synchronize one EcoPaste release from `CHANGELOG.md` to
 4. Preserve the source release header's version, compare URL, date, section
    order, entry order, issue numbers, commit hashes, and all link targets.
    Translate only human-readable prose. Keep platform and product names such as
-   EcoPaste, macOS, Windows, Token, AWS Key, and JWT consistent with the UI.
+   SnipStack, macOS, Windows, Token, AWS Key, and JWT consistent with the UI.
 5. Edit only `CHANGELOG.zh-CN.md`. Do not modify `CHANGELOG.md`, version files,
    release configuration, or unrelated dirty changes. Do not commit or push.
 6. Validate the result from the repository root:

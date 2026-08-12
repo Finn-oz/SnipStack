@@ -262,7 +262,7 @@ mod tests {
     fn round_trip_text() {
         let _guard = crate::clipboard::test_lock::serial();
         let ctx = ClipboardContext::new().unwrap();
-        ctx.set_text("hello ecopaste".to_string()).unwrap();
+        ctx.set_text("hello snipstack".to_string()).unwrap();
 
         let payload = ClipboardReader::new()
             .unwrap()
@@ -271,7 +271,7 @@ mod tests {
             .expect("clipboard should contain text");
 
         match payload {
-            ClipboardPayload::Text(text) => assert_eq!(text.text, "hello ecopaste"),
+            ClipboardPayload::Text(text) => assert_eq!(text.text, "hello snipstack"),
             other => panic!("expected text payload, got {other:?}"),
         }
     }

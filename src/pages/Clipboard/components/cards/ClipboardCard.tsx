@@ -92,7 +92,7 @@ const ClipboardCard: FC<ClipboardCardProps> = (props) => {
     />
   ) : (
     <img
-      alt="EcoPaste"
+      alt="SnipStack"
       className="pointer-events-none size-4"
       src={isMac ? "/logo-mac.png" : "/logo.png"}
     />

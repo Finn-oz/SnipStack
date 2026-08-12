@@ -46,7 +46,7 @@ fn current_platform() -> Platform {
     }
     #[cfg(not(any(target_os = "macos", target_os = "windows")))]
     {
-        compile_error!("EcoPaste only supports macOS and Windows")
+        compile_error!("SnipStack only supports macOS and Windows")
     }
 }
 
@@ -856,7 +856,7 @@ mod tests {
     struct TempDir(std::path::PathBuf);
     impl TempDir {
         fn new() -> Self {
-            let p = std::env::temp_dir().join(format!("ecopaste-ingest-{}", uuid::Uuid::new_v4()));
+            let p = std::env::temp_dir().join(format!("snipstack-ingest-{}", uuid::Uuid::new_v4()));
             std::fs::create_dir_all(&p).unwrap();
             Self(p)
         }

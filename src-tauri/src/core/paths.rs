@@ -32,10 +32,10 @@ const CONFIG_DIR: &str = "config";
 const STATE_DIR: &str = "state";
 /// 固定留在 `<app_local_data>/<env>` 的 bootstrap manifest 文件名。
 const STORAGE_MANIFEST_FILENAME: &str = "storage.json";
-/// 写入真实数据根的 identity manifest 文件名，用于识别 EcoPaste 数据目录。
-const STORAGE_IDENTITY_FILENAME: &str = ".ecopaste-storage.json";
+/// 写入真实数据根的 identity manifest 文件名，用于识别 SnipStack 数据目录。
+const STORAGE_IDENTITY_FILENAME: &str = ".snipstack-storage.json";
 /// 用户选择父目录后创建的数据子目录名。
-const CUSTOM_DATA_DIR_NAME: &str = "EcoPasteData";
+const CUSTOM_DATA_DIR_NAME: &str = "SnipStackData";
 /// 存储 manifest 格式版本。
 const STORAGE_MANIFEST_VERSION: u16 = 1;
 
@@ -94,7 +94,7 @@ pub fn default_data_dir(app: &AppHandle) -> Result<PathBuf> {
     bootstrap_dir(app)
 }
 
-/// 用户选择父目录后创建 EcoPaste 自有数据子目录。
+/// 用户选择父目录后创建 SnipStack 自有数据子目录。
 pub fn custom_data_dir(parent: &Path) -> PathBuf {
     parent.join(CUSTOM_DATA_DIR_NAME).join(env_dir())
 }
@@ -209,7 +209,7 @@ pub fn write_storage_identity(data_dir: &Path) -> Result<()> {
     Ok(())
 }
 
-/// 校验目标目录是否可作为 EcoPaste 数据根：空目录允许使用，已有 identity 时必须匹配。
+/// 校验目标目录是否可作为 SnipStack 数据根：空目录允许使用，已有 identity 时必须匹配。
 pub fn validate_storage_target(data_dir: &Path) -> Result<()> {
     let identity_path = data_dir.join(STORAGE_IDENTITY_FILENAME);
     if identity_path.exists() {
@@ -221,7 +221,7 @@ pub fn validate_storage_target(data_dir: &Path) -> Result<()> {
             return Ok(());
         }
 
-        return Err(anyhow::anyhow!("目标目录不是当前环境的 EcoPaste 数据目录").into());
+        return Err(anyhow::anyhow!("目标目录不是当前环境的 SnipStack 数据目录").into());
     }
 
     if data_dir.exists()
@@ -230,7 +230,7 @@ pub fn validate_storage_target(data_dir: &Path) -> Result<()> {
             .next()
             .is_some()
     {
-        return Err(anyhow::anyhow!("目标 EcoPaste 数据目录已存在且不是有效数据目录").into());
+        return Err(anyhow::anyhow!("目标 SnipStack 数据目录已存在且不是有效数据目录").into());
     }
 
     Ok(())
@@ -316,7 +316,7 @@ mod tests {
     impl TempDir {
         fn new() -> Self {
             let path = std::env::temp_dir()
-                .join(format!("ecopaste-storage-paths-{}", uuid::Uuid::new_v4()));
+                .join(format!("snipstack-storage-paths-{}", uuid::Uuid::new_v4()));
             fs::create_dir_all(&path).unwrap();
 
             Self(path)
@@ -346,7 +346,7 @@ mod tests {
 
         assert_eq!(
             custom_data_dir(temp.path()),
-            temp.path().join("EcoPasteData").join(env_dir())
+            temp.path().join("SnipStackData").join(env_dir())
         );
     }
 
@@ -379,7 +379,7 @@ mod tests {
     #[test]
     fn non_empty_storage_target_without_identity_is_rejected() {
         let temp = TempDir::new();
-        fs::write(temp.path().join("random.txt"), "not EcoPaste").unwrap();
+        fs::write(temp.path().join("random.txt"), "not SnipStack").unwrap();
 
         assert!(validate_storage_target(temp.path()).is_err());
     }

@@ -55,7 +55,7 @@ pub fn sync_enabled(app: &AppHandle, enabled: bool) -> Result<()> {
     set_enabled(app, enabled)
 }
 
-/// 判断进程参数是否来自 EcoPaste 注册的系统自启动项。
+/// 判断进程参数是否来自 SnipStack 注册的系统自启动项。
 pub fn is_autostart_launch(args: &[String]) -> bool {
     args.iter().any(|arg| arg == AUTO_LAUNCH_ARG)
 }
@@ -66,14 +66,14 @@ mod tests {
 
     #[test]
     fn detects_autostart_launch_argument() {
-        let args = vec!["EcoPaste.exe".to_owned(), "--auto-launch".to_owned()];
+        let args = vec!["SnipStack.exe".to_owned(), "--auto-launch".to_owned()];
 
         assert!(is_autostart_launch(&args));
     }
 
     #[test]
     fn rejects_regular_launch_arguments() {
-        let args = vec!["EcoPaste.exe".to_owned()];
+        let args = vec!["SnipStack.exe".to_owned()];
 
         assert!(!is_autostart_launch(&args));
     }

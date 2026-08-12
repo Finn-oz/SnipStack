@@ -226,7 +226,7 @@ def validate(source: Release, target: Release) -> list[str]:
 def parse_args() -> argparse.Namespace:
     """Parse command-line arguments."""
     parser = argparse.ArgumentParser(
-        description="Validate EcoPaste English/Chinese changelog parity."
+        description="Validate SnipStack English/Chinese changelog parity."
     )
     parser.add_argument(
         "--root",

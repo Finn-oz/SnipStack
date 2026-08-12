@@ -1,44 +1,45 @@
-<div align="center">
-  <img src="./public/logo.png" alt="EcoPaste" width="96" height="96" />
+# SnipStack
 
-  # EcoPaste
+**框选屏幕任意文字,留住你复制过的一切。**
 
-  **适用于 macOS 与 Windows 的本地优先剪贴板管理器。**
+SnipStack 是一款 Windows 11 工具,把 TextSniper 式的截屏取字 OCR 与完整的剪贴板
+历史管理合为一体:
 
-  [English](./README.md) | 简体中文
+- **框选即取字**:按下全局热键,在屏幕任意位置画一个框(视频、PDF、远程桌面、
+  禁止复制的界面……),识别出的文字直接进入剪贴板。完全离线 OCR(PP-OCRv5),
+  首发支持简体中文 + 英文混排,并支持二维码/条码识别。
+- **一切皆可搜索**:每次截屏取字(原图 + 识别文本)和每次复制(文本 + 图片)
+  都会进入本地全文搜索历史——凭图片里的文字就能把截图找回来。
+- **本地优先、注重隐私**:无云端、无账号。遵守密码管理器的剪贴板排除格式约定;
+  历史条数与保留期可配置。
 
-  <br />
+> **状态:早期开发中。** 剪贴板历史基础已可用;截屏取字管线建设中。仅支持
+> Windows 11。
 
-  <img alt="Tauri v2" src="https://img.shields.io/badge/Tauri-v2-24c8db?style=flat-square" />
-  <img alt="Rust first" src="https://img.shields.io/badge/Rust-first-b7410e?style=flat-square" />
-  <img alt="React 19" src="https://img.shields.io/badge/React-19-61dafb?style=flat-square" />
-  <img alt="macOS" src="https://img.shields.io/badge/macOS-supported-000000?style=flat-square&logo=apple&logoColor=white" />
-  <img alt="Windows" src="https://img.shields.io/badge/Windows-supported-0078d4?style=flat-square&logo=windows&logoColor=white" />
-</div>
+[English README](./README.md)
 
-## 关于
+## 开发
 
-EcoPaste 是一个开源桌面剪贴板管理器，采用 Rust-First 的 Tauri 架构：持久化和系统侧能力优先由 Rust 承担，React 前端专注于界面展示与交互。
+环境要求:Windows 11、[Rust](https://rustup.rs/)(版本见
+`rust-toolchain.toml`)、Node.js + [pnpm](https://pnpm.io/)。
 
-EcoPaste 的目标是更快、更轻、更易维护，并提供本地存储、SQLite 搜索、原生快捷键、托盘、备份，以及聚焦 macOS 与 Windows 的跨平台体验。
+```bash
+pnpm install
+pnpm tauri dev
+```
 
-## 功能
+## 路线图
 
-- 采集纯文本、HTML、RTF、图片、文件和文件夹等剪贴板内容。
-- 使用 SQLite FTS5 搜索剪贴板正文与备注。
-- 按来源应用和内容类型过滤历史记录。
-- 识别并跳过高置信敏感内容，例如私钥、服务 Token、AWS Key 和 JWT。
-- 在独立预览窗口中查看文本、图片和文件记录。
-- 支持粘贴、复制、复制为纯文本、定位文件、打开链接、添加备注、置顶、收藏、删除，以及将记录拖出到其它应用。
-- 通过收藏、置顶、备注、自定义分组和可配置快捷动作组织历史记录。
-- 可调整采集顺序、大小限制、保留策略、展示密度、列表排序和窗口行为。
-- 支持导出和导入 `.ecopastebak` 备份，包括加密备份包。
-- 剪贴板数据、资源缓存和设置均保存在本机。
+- **M1** — 框选取字 MVP:热键 → 每显示器框选覆盖层 → 离线 PP-OCRv5 识别 →
+  剪贴板 + 历史库。
+- **M2** — 二维码/条码识别、换行处理模式、复制图片后台 OCR、剪贴板隐私约定、
+  历史保留期。
+- **M3** — 多显示器混合 DPI 打磨、可下载语言包、NSIS 安装包、v0.1 发布。
 
-## 参与贡献
+## 致谢与许可
 
-开发环境、架构说明、质量检查和贡献要求请阅读[贡献指南](./CONTRIBUTING.zh-CN.md)。
+SnipStack 是 [EcoPaste](https://github.com/EcoPasteHub/EcoPaste)
+(作者 [ayangweb](https://github.com/ayangweb))的硬分叉——剪贴板监听、FTS5
+存储、窗口管理与设置等基础设施均来自上游,特此致谢!
 
-## 开源协议
-
-EcoPaste 基于 [Apache License 2.0](./LICENSE) 开源。
+基于 [Apache License 2.0](./LICENSE) 开源,另见 [NOTICE](./NOTICE)。

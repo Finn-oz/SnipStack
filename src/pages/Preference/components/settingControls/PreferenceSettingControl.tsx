@@ -12,7 +12,6 @@ import type {
   PreferenceSettingChangeHandler,
   SettingValue,
 } from "../../types/preferences";
-import { SponsorQrControl } from "./AboutControls";
 import ActionControl from "./ActionControl";
 import CaptureOrderControl from "./CaptureOrderControl";
 import ClipboardGroupSelectControl from "./ClipboardGroupSelectControl";
@@ -63,8 +62,6 @@ const PreferenceSettingControl: FC<PreferenceSettingControlProps> = (props) => {
   };
 
   switch (setting.control.type) {
-    case "sponsorQr":
-      return <SponsorQrControl setting={setting} />;
     case "switch":
       return (
         <SwitchControl

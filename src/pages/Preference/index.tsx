@@ -65,7 +65,7 @@ interface AppMetadata {
 }
 
 /**
- * EcoPaste 偏好设置：以用户心智组织设置，而非代码模块。
+ * SnipStack 偏好设置：以用户心智组织设置，而非代码模块。
  */
 const Preference: FC = () => {
   const { t } = useTranslation("preferences");

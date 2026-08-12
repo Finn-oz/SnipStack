@@ -889,11 +889,6 @@ export const preferenceTabs: PreferenceTab[] = [
             id: "about.github",
             keywords: ["github", "source", "repository"],
           },
-          {
-            control: { type: "sponsorQr" },
-            id: "about.sponsor",
-            keywords: ["sponsor", "donate", "support"],
-          },
         ],
       },
     ],

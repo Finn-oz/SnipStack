@@ -2,16 +2,16 @@
 
 [English](./CONTRIBUTING.md) | 简体中文
 
-感谢你帮助改进 EcoPaste。本指南说明本项目的范围、开发环境、架构边界、质量检查，以及代码和文档贡献的基本要求。
+感谢你帮助改进 SnipStack。本指南说明本项目的范围、开发环境、架构边界、质量检查，以及代码和文档贡献的基本要求。
 
 ## 项目状态
 
-EcoPaste 已进入正式发布通道。后续变更应直接演进当前应用；涉及已发布用户数据的存储、设置或数据库契约变化时，需要提供
+SnipStack 已进入正式发布通道。后续变更应直接演进当前应用；涉及已发布用户数据的存储、设置或数据库契约变化时，需要提供
 migration 或升级处理。
 
 ## 平台范围
 
-EcoPaste 仅支持 macOS 与 Windows。
+SnipStack 仅支持 macOS 与 Windows。
 
 Linux 不在支持范围内，新增代码、依赖、构建产物和文档都应聚焦 macOS 与 Windows。
 
@@ -25,7 +25,7 @@ Linux 不在支持范围内，新增代码、依赖、构建产物和文档都�
 
 ## 架构
 
-EcoPaste 采用 Rust-First 的 Tauri 架构：
+SnipStack 采用 Rust-First 的 Tauri 架构：
 
 - `src-tauri/src/clipboard/` 负责剪贴板采集、内容识别、写回、来源应用、资源落盘和监听回环抑制。
 - `src-tauri/src/db/` 负责 SQLite 仓储、模型、迁移和 FTS 搜索。

@@ -24,7 +24,7 @@
         "minHeight": 600,
         "minWidth": 360,
         "skipTaskbar": true,
-        "title": "EcoPaste",
+        "title": "SnipStack",
         "transparent": true,
         "url": "index.html/#/",
         "visible": false,
@@ -40,18 +40,18 @@
   },
   "bundle": {
     "active": true,
-    "copyright": "Copyright 2026 ayangweb",
-    "createUpdaterArtifacts": true,
+    "copyright": "Copyright 2026 SnipStack Contributors. Based on EcoPaste, Copyright ayangweb.",
+    "createUpdaterArtifacts": false,
     "fileAssociations": [
       {
-        "description": "EcoPaste history backup",
+        "description": "SnipStack history backup",
         "exportedType": {
           "conformsTo": ["public.data"],
-          "identifier": "com.ayangweb.eco-paste.backup"
+          "identifier": "com.snipstack.app.backup"
         },
-        "ext": ["ecopastebak"],
-        "mimeType": "application/vnd.ecopaste.backup",
-        "name": "EcoPaste Backup",
+        "ext": ["snipstackbak"],
+        "mimeType": "application/vnd.snipstack.backup",
+        "name": "SnipStack Backup",
         "role": "Editor"
       }
     ],
@@ -65,20 +65,22 @@
     "license": "Apache-2.0",
     "licenseFile": "../LICENSE",
     "resources": ["assets/tray.ico"],
-    "shortDescription": "EcoPaste",
+    "shortDescription": "SnipStack",
     "targets": ["nsis", "dmg", "app"]
   },
-  "identifier": "com.ayangweb.eco-paste",
+  "identifier": "com.snipstack.app",
   "plugins": {
     "updater": {
       "active": true,
-      "endpoints": ["https://releases.ecopaste.cn/update?channel=stable"],
+      "endpoints": [
+        "https://github.com/snipstack/SnipStack/releases/latest/download/latest.json"
+      ],
       "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDIwMzUzRkJCQUI3NjY4RgpSV1NQWnJlNisxTURBbFE2WWJpUlBJR0x0OXJOclVuUGlVYVhoNjJPZitYN0Q4V05GeW1aU2w0Zwo=",
       "windows": {
         "installMode": "passive"
       }
     }
   },
-  "productName": "EcoPaste",
+  "productName": "SnipStack",
   "version": "../package.json"
 }

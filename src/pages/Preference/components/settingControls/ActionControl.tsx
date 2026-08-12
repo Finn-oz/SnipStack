@@ -39,7 +39,7 @@ import BackupExportModal from "../BackupExportModal";
 import ClipboardGroupManagerModal from "../ClipboardGroupManagerModal";
 import ControlFrame from "./ControlFrame";
 
-const BACKUP_EXTENSION = "ecopastebak";
+const BACKUP_EXTENSION = "snipstackbak";
 const ABOUT_CHECK_UPDATES_SETTING_ID = "about.checkUpdates";
 const ABOUT_GITHUB_SETTING_ID = "about.github";
 const CLEAN_CACHE_SETTING_ID = "localData.cleanCache";
@@ -265,7 +265,7 @@ const ActionControl: FC<ActionControlProps> = (props) => {
   };
 
   /**
-   * 选择 `.ecopastebak` 文件并交给 Rust 识别，识别事件会打开统一导入弹窗。
+   * 选择 `.snipstackbak` 文件并交给 Rust 识别，识别事件会打开统一导入弹窗。
    */
   const pickImportBackup = async () => {
     setLoading(true);

@@ -1,45 +1,50 @@
-<div align="center">
-  <img src="./public/logo.png" alt="EcoPaste" width="96" height="96" />
+# SnipStack
 
-# EcoPaste
+**Snip any text on screen. Keep everything you ever copied.**
 
-**A local-first clipboard manager for macOS and Windows.**
+SnipStack is a Windows 11 tool that combines a TextSniper-style screen-capture
+OCR with a full clipboard history manager:
 
-English | [简体中文](./README.zh-CN.md)
+- **Snip → Text**: press a global hotkey, draw a rectangle anywhere on screen
+  (video, PDF, remote desktop, protected UI…), and the recognized text lands in
+  your clipboard. Fully offline OCR (PP-OCRv5), Simplified Chinese + English at
+  launch, QR/barcode decoding included.
+- **Everything becomes searchable history**: every snip (image + recognized
+  text) and everything you copy (text + images) goes into a local, full-text
+  searchable history — find any screenshot again by the words inside it.
+- **Local-first & private**: no cloud, no account. Honors the clipboard
+  formats password managers use to exclude sensitive content; configurable
+  history limits and retention.
 
-  <br />
+> **Status: early development.** The clipboard-history foundation works; the
+> screen-capture OCR pipeline is under construction. Windows 11 only.
 
-  <img alt="Tauri v2" src="https://img.shields.io/badge/Tauri-v2-24c8db?style=flat-square" />
-  <img alt="Rust first" src="https://img.shields.io/badge/Rust-first-b7410e?style=flat-square" />
-  <img alt="React 19" src="https://img.shields.io/badge/React-19-61dafb?style=flat-square" />
-  <img alt="macOS" src="https://img.shields.io/badge/macOS-supported-000000?style=flat-square&logo=apple&logoColor=white" />
-  <img alt="Windows" src="https://img.shields.io/badge/Windows-supported-0078d4?style=flat-square&logo=windows&logoColor=white" />
-</div>
+[简体中文说明](./README.zh-CN.md)
 
-## About
+## Development
 
-EcoPaste is an open-source desktop clipboard manager built with a Rust-first Tauri architecture: durable behavior lives in Rust, while the React frontend focuses on rendering and interaction.
+Prerequisites: Windows 11, [Rust](https://rustup.rs/) (see
+`rust-toolchain.toml`), Node.js + [pnpm](https://pnpm.io/).
 
-The app is designed to be fast, lightweight, and maintainable, with local storage, SQLite search, native shortcuts, tray integration, backup support, and a focused cross-platform surface for macOS and Windows.
+```bash
+pnpm install
+pnpm tauri dev
+```
 
-## Features
+## Roadmap
 
-- Capture clipboard history for plain text, HTML, RTF, images, files, and folders.
-- Search clipboard content and notes with SQLite FTS5.
-- Filter history by source application and content type.
-- Protect sensitive content by skipping high-confidence secrets such as private keys, service tokens, AWS keys, and JWTs.
-- Preview text, images, and files in a dedicated preview window.
-- Paste, copy, copy as plain text, reveal files, open links, add notes, pin, favorite, delete, and drag items out to other apps.
-- Organize history with favorites, pinned items, notes, custom groups, and configurable item actions.
-- Tune capture order, size limits, retention, display density, list sorting, and window behavior.
-- Export and import `.ecopastebak` backups, including encrypted backup containers.
-- Keep clipboard data, resources, and settings local to your machine.
+- **M1** — Snip-to-text MVP: hotkey → per-monitor selection overlay → offline
+  PP-OCRv5 OCR → clipboard + history.
+- **M2** — QR/barcode decoding, line-break modes, background OCR for copied
+  images, clipboard privacy conventions, history TTL.
+- **M3** — Mixed-DPI multi-monitor polish, downloadable language packs, NSIS
+  installer, v0.1 release.
 
-## Contributing
+## Credits & License
 
-Development setup, architecture notes, quality checks, and contribution
-expectations live in the [contribution guide](./CONTRIBUTING.md).
+SnipStack is a hard fork of
+[EcoPaste](https://github.com/EcoPasteHub/EcoPaste) by
+[ayangweb](https://github.com/ayangweb) — the clipboard watcher, FTS5 storage,
+window management, and settings infrastructure originate there. Thank you!
 
-## License
-
-EcoPaste is licensed under the [Apache License 2.0](./LICENSE).
+Licensed under the [Apache License 2.0](./LICENSE). See [NOTICE](./NOTICE).
