@@ -10,6 +10,7 @@ export const TAURI_EVENT = {
   CONTEXT_MENU_SHOW: "context-menu://show",
   CONTEXT_SUBMENU_SHOW: "context-submenu://show",
   KEYBOARD_NAV: "keyboard://nav",
+  OCR_PACK_PROGRESS: "ocr://pack-progress",
   PREFERENCE_HIGHLIGHT_SETTING: "preference://highlight-setting",
   PREVIEW_UPDATED: "preview://updated",
   SETTINGS_UPDATED: "settings://updated",

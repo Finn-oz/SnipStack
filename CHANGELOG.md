@@ -10,6 +10,13 @@ clipboard-manager codebase, see the upstream changelog.
 
 ### Added
 
+- Downloadable OCR language packs (Korean, Latin-script, Russian/East
+  Slavic, Thai, Arabic; 8-13 MB each) with in-app download, progress,
+  size validation, and a mirror source; the built-in model already covers
+  Simplified/Traditional Chinese, English, and Japanese. Recognition
+  falls back to the built-in model whenever the selected pack is missing.
+- Snip overlay now focuses the monitor under the cursor, so Esc works
+  immediately on multi-monitor setups.
 - QR/barcode detection in the snip selection: codes are decoded directly
   (multiple codes joined by line) with OCR as the fallback; configurable.
 - Background OCR for copied images: images captured from the clipboard are
@@ -35,8 +42,13 @@ clipboard-manager codebase, see the upstream changelog.
 - Auto-updater endpoints now point to SnipStack GitHub Releases
   (`latest.json` convention); updater artifacts disabled until first release.
 
+### Changed
+
+- Release workflow now builds a Windows x64 NSIS installer only and
+  fetches OCR models during the build.
+
 ### Planned
 
-- Mixed-DPI multi-monitor polish and Windows 11 end-to-end validation.
-- Downloadable OCR language packs beyond Chinese + English.
-- NSIS installer, updater signing key, and first public release.
+- Windows 11 end-to-end validation and the mixed-DPI test matrix
+  (docs/testing-win11.md).
+- Updater signing key and first public release.

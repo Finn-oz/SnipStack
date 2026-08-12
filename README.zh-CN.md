@@ -25,8 +25,25 @@ SnipStack 是一款 Windows 11 工具,把 TextSniper 式的截屏取字 OCR 与�
 
 ```bash
 pnpm install
+pnpm fetch:ocr-models
+pnpm build:icon
 pnpm tauri dev
 ```
+
+`fetch:ocr-models` 会把 PP-OCRv5 mobile 模型(约 21 MB)下载到
+`src-tauri/resources/ocr/`(不入 git)。手动验收清单见
+[docs/testing-win11.md](./docs/testing-win11.md)。
+
+## 发布(维护者)
+
+推送 `v*` 标签触发发布流水线(Windows x64 NSIS 安装包,附到由双语
+changelog 生成的 GitHub Release 草稿)。首次发布自动更新前需要:
+
+1. 生成更新器密钥对:`pnpm tauri signer generate`;
+2. 替换 `src-tauri/tauri.conf.json` 的 `plugins.updater.pubkey` 并把
+   `createUpdaterArtifacts` 改为 `true`;
+3. 配置仓库 secrets:`TAURI_SIGNING_PRIVATE_KEY` /
+   `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`。
 
 ## 路线图
 

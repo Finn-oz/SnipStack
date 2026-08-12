@@ -1531,3 +1531,42 @@ export const snipConfirm = async (selection: SnipSelectionInput) => {
     selection,
   });
 };
+
+/** 与 Rust `ocr::packs::PackStatus` 一一对应。 */
+export interface OcrPackStatus {
+  id: string;
+  downloaded: boolean;
+  totalBytes: number;
+}
+
+/**
+ * 列出可下载的 OCR 语言包及状态(不含内置中英)。
+ */
+export const listOcrLanguagePacks = async () => {
+  return await call<OcrPackStatus[]>(
+    TAURI_COMMAND.LIST_OCR_LANGUAGE_PACKS,
+    "commands:labels.ocrLanguagePacks",
+  );
+};
+
+/**
+ * 下载语言包;进度经 `ocr://pack-progress` 事件广播,完成后 resolve。
+ */
+export const downloadOcrLanguagePack = async (id: string) => {
+  await call<void>(
+    TAURI_COMMAND.DOWNLOAD_OCR_LANGUAGE_PACK,
+    "commands:labels.downloadOcrLanguagePack",
+    { id },
+  );
+};
+
+/**
+ * 删除已下载的语言包。
+ */
+export const deleteOcrLanguagePack = async (id: string) => {
+  await call<void>(
+    TAURI_COMMAND.DELETE_OCR_LANGUAGE_PACK,
+    "commands:labels.deleteOcrLanguagePack",
+    { id },
+  );
+};

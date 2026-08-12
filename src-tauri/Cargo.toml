@@ -52,6 +52,9 @@ xcap = "0.9"
 oar-ocr = "0.9"
 # 截屏取字:框选区域内 QR/条码解码(zxing 的 Rust 移植)。
 rxing = "0.9"
+# OCR 语言包下载(tauri-plugin-updater 已引入 reqwest,此处显式声明复用)。
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "stream"] }
+futures-util = "0.3"
 tauri-plugin-os = "2"
 tauri-plugin-updater = "2"
 time = "0.3"

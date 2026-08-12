@@ -9,6 +9,10 @@ SnipStack 是 [EcoPaste](https://github.com/EcoPasteHub/EcoPaste) 的硬分叉
 
 ### 新增
 
+- 可下载 OCR 语言包(韩文、拉丁字母语言、俄语/东斯拉夫、泰文、阿拉伯文,
+  每个 8-13 MB):应用内下载、进度显示、大小校验、含备用镜像源;内置模型
+  已覆盖简繁中文、英文与日文。所选语言包不可用时识别自动回落内置模型。
+- 框选覆盖层聚焦光标所在显示器,多显示器下 Esc 立即可用。
 - 截屏取字:全局热键(默认 `Alt+S`)或托盘菜单唤起每显示器框选覆盖层;选区经
   PP-OCRv5 mobile 离线识别(中英文),文本自动进剪贴板,截图连同识别文本存入
   历史并可全文搜索。换行模式(保留/合并)与自动复制可在新的「截屏取字」设置页配置。
@@ -28,8 +32,11 @@ SnipStack 是 [EcoPaste](https://github.com/EcoPasteHub/EcoPaste) 的硬分叉
 - 自动更新端点改为指向 SnipStack 的 GitHub Releases
   (`latest.json` 约定);首个版本发布前禁用更新产物构建。
 
+### 变更
+
+- 发布流水线只构建 Windows x64 NSIS 安装包,并在构建时拉取 OCR 模型。
+
 ### 计划中
 
-- 多显示器混合 DPI 打磨与 Windows 11 端到端验证。
-- 中英文之外的可下载 OCR 语言包。
-- NSIS 安装包、更新器签名密钥与首个公开版本。
+- Windows 11 端到端验证与混合 DPI 测试矩阵(docs/testing-win11.md)。
+- 更新器签名密钥与首个公开版本。

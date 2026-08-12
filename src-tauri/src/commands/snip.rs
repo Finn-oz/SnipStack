@@ -34,3 +34,21 @@ pub async fn snip_cancel(app: AppHandle) -> Result<()> {
 pub async fn snip_confirm(app: AppHandle, selection: SnipSelection) -> Result<()> {
     capture::confirm_snip(app, selection).await
 }
+
+/// 列出全部可选 OCR 语言包及其下载状态(不含内置中英,前端固定渲染)。
+#[tauri::command]
+pub async fn list_ocr_language_packs(app: AppHandle) -> Result<Vec<crate::ocr::packs::PackStatus>> {
+    Ok(crate::ocr::packs::list(&app))
+}
+
+/// 下载指定语言包;进度经 `ocr://pack-progress` 事件广播。
+#[tauri::command]
+pub async fn download_ocr_language_pack(app: AppHandle, id: String) -> Result<()> {
+    crate::ocr::packs::download(&app, &id).await
+}
+
+/// 删除已下载的语言包;若为当前识别语言,后续识别自动回落内置中英。
+#[tauri::command]
+pub async fn delete_ocr_language_pack(app: AppHandle, id: String) -> Result<()> {
+    crate::ocr::packs::delete(&app, &id)
+}

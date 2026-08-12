@@ -552,6 +552,10 @@
           "description": "Decode QR codes and barcodes found in the selection instead of running OCR.",
           "title": "Detect QR / Barcodes"
         },
+        "language": {
+          "description": "Choose the recognition language. Languages beyond the built-in one need a downloadable pack (model + dictionary, about 8-13 MB).",
+          "title": "Recognition Language"
+        },
         "lineBreak": {
           "description": "Keep original line breaks, or merge into one paragraph (no space inserted between CJK lines).",
           "options": {
@@ -691,6 +695,19 @@
   "search": {
     "empty": "No matching settings",
     "placeholder": "Search settings"
+  },
+  "snipLanguage": {
+    "builtin": "Chinese / English (built-in)",
+    "builtinNote": "Also covers Traditional Chinese and Japanese",
+    "delete": "Delete",
+    "download": "Download",
+    "packs": {
+      "arabic": "Arabic",
+      "eslav": "Russian (East Slavic)",
+      "korean": "Korean",
+      "latin": "Latin-script languages (Fr/De/Es…)",
+      "th": "Thai"
+    }
   },
   "status": {
     "alwaysOn": "Default",

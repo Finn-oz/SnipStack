@@ -68,6 +68,7 @@ export type PreferenceControl =
   | { type: "textarea" }
   | { type: "appExclusion" }
   | { type: "action"; danger?: boolean }
+  | { type: "ocrLanguage" }
   | { type: "status" }
   | { type: "shortcutTags"; shortcuts: PreferenceShortcutTag[] };
 

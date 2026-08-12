@@ -552,6 +552,10 @@
           "description": "框选区域内发现二维码/条码时直接取码值,不再走文字识别。",
           "title": "识别二维码/条码"
         },
+        "language": {
+          "description": "选择识别语言;内置之外的语言需先下载语言包(模型 + 字典,约 8-13 MB)。",
+          "title": "识别语言"
+        },
         "lineBreak": {
           "description": "识别结果保留原始换行,或合并为一段(中文续行不加空格)。",
           "options": {
@@ -691,6 +695,19 @@
   "search": {
     "empty": "没有找到相关设置",
     "placeholder": "搜索配置项"
+  },
+  "snipLanguage": {
+    "builtin": "中文 / 英文(内置)",
+    "builtinNote": "同时覆盖繁体中文与日文",
+    "delete": "删除",
+    "download": "下载",
+    "packs": {
+      "arabic": "阿拉伯文",
+      "eslav": "俄语(东斯拉夫)",
+      "korean": "韩文",
+      "latin": "拉丁字母语言(法/德/西等)",
+      "th": "泰文"
+    }
   },
   "status": {
     "alwaysOn": "默认能力",

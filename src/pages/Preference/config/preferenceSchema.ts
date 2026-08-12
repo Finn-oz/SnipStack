@@ -771,6 +771,15 @@ export const preferenceTabs: PreferenceTab[] = [
               return settings.snip.ocrCopiedImages;
             },
           },
+          {
+            control: { type: "ocrLanguage" },
+            id: "snip.language",
+            keywords: ["snip", "ocr", "language", "pack", "korean", "latin"],
+            path: ["snip", "language"],
+            value: (settings) => {
+              return settings.snip.language;
+            },
+          },
         ],
       },
     ],

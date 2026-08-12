@@ -40,9 +40,16 @@ struct SnipFrame {
     preview_path: PathBuf,
 }
 
+/// 一次截屏取字会话:全部显示器的冻结帧 + 应获得键盘焦点的显示器序号。
+struct SnipSession {
+    frames: Vec<SnipFrame>,
+    /// 会话开始时光标所在的显示器;该覆盖层获得焦点,Esc 才能直达。
+    focus_index: usize,
+}
+
 #[derive(Default)]
 pub struct SnipState {
-    session: Mutex<Option<Vec<SnipFrame>>>,
+    session: Mutex<Option<SnipSession>>,
 }
 
 /// 前端提交的选区(覆盖层窗口内 CSS 像素)。
@@ -133,7 +140,11 @@ pub fn start_snip(app: &AppHandle) -> Result<()> {
         geometries.push((x, y, width, height));
     }
 
-    *state.session.lock().expect("snip state poisoned") = Some(frames);
+    let focus_index = focused_monitor_index(app, &geometries);
+    *state.session.lock().expect("snip state poisoned") = Some(SnipSession {
+        frames,
+        focus_index,
+    });
 
     for (index, (x, y, width, height)) in geometries.into_iter().enumerate() {
         if let Err(err) = build_overlay_window(app, index, x, y, width, height) {
@@ -143,6 +154,22 @@ pub fn start_snip(app: &AppHandle) -> Result<()> {
         }
     }
     Ok(())
+}
+
+/// 光标当前所在显示器的序号;取不到光标位置或不在任何屏内时回落 0。
+fn focused_monitor_index(app: &AppHandle, geometries: &[(i32, i32, u32, u32)]) -> usize {
+    let Ok(cursor) = app.cursor_position() else {
+        return 0;
+    };
+    geometries
+        .iter()
+        .position(|(x, y, width, height)| {
+            cursor.x >= f64::from(*x)
+                && cursor.x < f64::from(*x) + f64::from(*width)
+                && cursor.y >= f64::from(*y)
+                && cursor.y < f64::from(*y) + f64::from(*height)
+        })
+        .unwrap_or(0)
 }
 
 /// 建一个铺满指定显示器的覆盖层窗口;先建成不可见,前端帧图就绪后再显示(避免白屏闪烁)。
@@ -192,7 +219,13 @@ pub fn overlay_ready(app: &AppHandle, monitor: usize) -> Result<()> {
     window
         .show()
         .map_err(|err| AppError::Other(anyhow::anyhow!("show snip overlay: {err}")))?;
-    if monitor == 0 {
+
+    let focus_index = {
+        let state = app.state::<SnipState>();
+        let session = state.session.lock().expect("snip state poisoned");
+        session.as_ref().map(|s| s.focus_index).unwrap_or(0)
+    };
+    if monitor == focus_index {
         let _ = window.set_focus();
     }
     Ok(())
@@ -204,6 +237,7 @@ pub fn frame_preview_path(app: &AppHandle, monitor: usize) -> Result<String> {
     let session = state.session.lock().expect("snip state poisoned");
     let frames = session
         .as_ref()
+        .map(|s| &s.frames)
         .ok_or_else(|| AppError::Other(anyhow::anyhow!("no active snip session")))?;
     let frame = frames
         .get(monitor)
@@ -238,7 +272,8 @@ pub async fn confirm_snip(app: AppHandle, selection: SnipSelection) -> Result<()
         let mut session = state.session.lock().expect("snip state poisoned");
         let mut frames = session
             .take()
-            .ok_or_else(|| AppError::Other(anyhow::anyhow!("no active snip session")))?;
+            .ok_or_else(|| AppError::Other(anyhow::anyhow!("no active snip session")))?
+            .frames;
         if selection.monitor >= frames.len() {
             return Err(AppError::Other(anyhow::anyhow!(
                 "snip monitor {} out of range",

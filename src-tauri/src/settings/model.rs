@@ -36,6 +36,9 @@ pub struct Snip {
     pub detect_qr: bool,
     /// 后台对复制进历史的图片做 OCR,文本进入全文搜索索引。
     pub ocr_copied_images: bool,
+    /// 识别语言:`zhEn`(内置,含简繁中文/英文/日文)或已下载语言包的 id。
+    /// 所选语言包不可用时识别自动回落内置模型。
+    pub language: String,
 }
 
 impl Default for Snip {
@@ -46,6 +49,7 @@ impl Default for Snip {
             save_to_history: true,
             detect_qr: true,
             ocr_copied_images: true,
+            language: "zhEn".into(),
         }
     }
 }

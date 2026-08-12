@@ -4,9 +4,10 @@
 //! 构建与推理都是 CPU 密集操作,调用方必须放在 `spawn_blocking` 里,不要阻塞异步运行时。
 
 pub mod backfill;
+pub mod packs;
 
 use std::path::PathBuf;
-use std::sync::{Mutex, OnceLock};
+use std::sync::Mutex;
 
 use image::RgbaImage;
 use oar_ocr::prelude::*;
@@ -24,11 +25,18 @@ pub struct OcrLine {
     pub text: String,
 }
 
-/// 全局唯一引擎实例。oar-ocr 引擎构建要读 20MB 模型,只做一次。
-/// `Mutex` 串行化推理:桌面截屏场景不存在并发识别,简单优先。
-static ENGINE: OnceLock<Mutex<OAROCR>> = OnceLock::new();
+/// 当前引擎实例,键为语言 id;语言切换或语言包增删时重建。
+/// `Mutex` 同时串行化推理:桌面截屏场景不存在并发识别,简单优先。
+static ENGINE: Mutex<Option<(String, OAROCR)>> = Mutex::new(None);
 
-/// 解析模型资源文件;dev 模式下即 `src-tauri/resources/ocr/`。
+/// 丢弃缓存的引擎(语言包下载/删除后调用),下次识别按最新状态重建。
+pub(crate) fn invalidate_engine() {
+    *ENGINE
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner()) = None;
+}
+
+/// 解析内置模型资源文件;dev 模式下即 `src-tauri/resources/ocr/`。
 fn resource(app: &AppHandle, name: &str) -> Result<PathBuf> {
     let path = app
         .path()
@@ -42,15 +50,19 @@ fn resource(app: &AppHandle, name: &str) -> Result<PathBuf> {
     Ok(path)
 }
 
-fn build_engine(app: &AppHandle) -> Result<OAROCR> {
+/// 按设置选定的语言解析 (引擎键, det, rec, dict)。
+/// 选中的语言包未下载(或校验失败)时回落内置中英,并记警告——识别永远可用。
+fn engine_spec(app: &AppHandle, selected: &str) -> Result<(String, PathBuf, PathBuf, PathBuf)> {
     let det = resource(app, "pp-ocrv5_mobile_det.onnx")?;
+    if selected != packs::BUILTIN_LANGUAGE_ID {
+        if let Some((rec, dict)) = packs::resolve(app, selected) {
+            return Ok((selected.to_owned(), det, rec, dict));
+        }
+        log::warn!("ocr language pack {selected} unavailable, falling back to builtin zh/en");
+    }
     let rec = resource(app, "pp-ocrv5_mobile_rec.onnx")?;
     let dict = resource(app, "ppocrv5_dict.txt")?;
-
-    let started = std::time::Instant::now();
-    let engine = build_engine_from_paths(&det, &rec, &dict)?;
-    log::info!("ocr engine ready in {:?}", started.elapsed());
-    Ok(engine)
+    Ok((packs::BUILTIN_LANGUAGE_ID.to_owned(), det, rec, dict))
 }
 
 fn build_engine_from_paths(
@@ -68,26 +80,29 @@ fn build_engine_from_paths(
 }
 
 /// 对一张 RGBA 图做整图 OCR,返回按阅读顺序排列的行。
+/// 识别语言取自设置 `snip.language`;所选语言包缺失时自动回落内置中英。
 ///
 /// CPU 密集:调用方需置于 `spawn_blocking`。
 pub fn recognize(app: &AppHandle, image: RgbaImage) -> Result<Vec<OcrLine>> {
-    let engine = match ENGINE.get() {
-        Some(engine) => engine,
-        None => {
-            let built = Mutex::new(build_engine(app)?);
-            // 竞态时丢弃后建的引擎,统一走先建成的。
-            let _ = ENGINE.set(built);
-            ENGINE.get().expect("ocr engine just initialized")
-        }
-    };
+    let selected = app
+        .try_state::<crate::settings::SettingsStore>()
+        .map(|store| store.snapshot().snip.language)
+        .unwrap_or_else(|| packs::BUILTIN_LANGUAGE_ID.to_owned());
+    let (key, det, rec, dict) = engine_spec(app, &selected)?;
+
+    let mut guard = ENGINE
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    if guard.as_ref().map(|(k, _)| k != &key).unwrap_or(true) {
+        let started = std::time::Instant::now();
+        let engine = build_engine_from_paths(&det, &rec, &dict)?;
+        log::info!("ocr engine ({key}) ready in {:?}", started.elapsed());
+        *guard = Some((key, engine));
+    }
+    let (_, engine) = guard.as_mut().expect("ocr engine just built");
 
     let started = std::time::Instant::now();
-    let lines = predict_lines(
-        &mut engine
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner()),
-        image,
-    )?;
+    let lines = predict_lines(engine, image)?;
     log::info!(
         "ocr recognized {} lines in {:?}",
         lines.len(),

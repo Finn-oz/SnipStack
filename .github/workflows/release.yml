@@ -36,7 +36,7 @@ jobs:
         id: release
         shell: bash
         env:
-          GH_TOKEN: ${{ secrets.RELEASE_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           INPUT_TAG_NAME: ${{ inputs.tag_name }}
         run: |
           set -euo pipefail
@@ -148,20 +148,13 @@ jobs:
       contents: write
     strategy:
       fail-fast: false
+      # SnipStack 仅发布 Windows 11 x64;macOS 代码只保证可编译(开发机用),不出产物。
+      # Windows ARM64 暂不发布:ort 对 aarch64-pc-windows-msvc 的预编译静态库覆盖未验证。
       matrix:
         include:
-          - label: macOS Apple Silicon
-            os: macos-latest
-            target: aarch64-apple-darwin
-          - label: macOS Intel
-            os: macos-latest
-            target: x86_64-apple-darwin
           - label: Windows x64
             os: windows-latest
             target: x86_64-pc-windows-msvc
-          - label: Windows ARM64
-            os: windows-latest
-            target: aarch64-pc-windows-msvc
     runs-on: ${{ matrix.os }}
     steps:
       - name: Checkout
@@ -190,6 +183,9 @@ jobs:
         run: pnpm build:icon
         env:
           PLATFORM: ${{ matrix.os }}
+
+      - name: Fetch OCR models
+        run: pnpm fetch:ocr-models
 
       - name: Cache cargo
         uses: Swatinem/rust-cache@v2
@@ -260,7 +256,7 @@ jobs:
         uses: tauri-apps/tauri-action@v1
         env:
           CI: false
-          GITHUB_TOKEN: ${{ secrets.RELEASE_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PLATFORM: ${{ matrix.os }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}

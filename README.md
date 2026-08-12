@@ -28,8 +28,26 @@ Prerequisites: Windows 11, [Rust](https://rustup.rs/) (see
 
 ```bash
 pnpm install
+pnpm fetch:ocr-models
+pnpm build:icon
 pnpm tauri dev
 ```
+
+`fetch:ocr-models` downloads the PP-OCRv5 mobile models (~21 MB) into
+`src-tauri/resources/ocr/` — they are not committed to git. Manual test
+checklist: [docs/testing-win11.md](./docs/testing-win11.md).
+
+## Releasing (maintainers)
+
+Tag `v*` triggers the release workflow (Windows x64 NSIS installer,
+attached to a draft GitHub Release built from both changelogs). Before the
+first release that ships auto-updates:
+
+1. Generate an updater keypair: `pnpm tauri signer generate`.
+2. Replace `plugins.updater.pubkey` in `src-tauri/tauri.conf.json` and set
+   `createUpdaterArtifacts: true`.
+3. Add `TAURI_SIGNING_PRIVATE_KEY` / `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`
+   repository secrets.
 
 ## Roadmap
 

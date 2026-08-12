@@ -96,6 +96,8 @@ export interface Snip {
   saveToHistory: boolean;
   detectQr: boolean;
   ocrCopiedImages: boolean;
+  /** 识别语言:"zhEn"(内置)或语言包 id(korean/latin/eslav/th/arabic)。 */
+  language: string;
 }
 
 export interface Content {
