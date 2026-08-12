@@ -53,6 +53,22 @@ pub(crate) fn invalidate_engine() {
     *crate::core::sync::lock_unpoisoned(&ENGINE) = None;
 }
 
+/// 组装用户可见的 OCR 错误:本地化根因文案(走 i18n,见 AGENTS.md 边界)+ 技术细节。
+pub(crate) fn ocr_error(
+    app: &AppHandle,
+    key: crate::i18n::commands::Key,
+    detail: impl std::fmt::Display,
+) -> AppError {
+    let lang = crate::i18n::current_language(app);
+    let label = crate::i18n::commands::label(lang, key);
+    let detail = detail.to_string();
+    if detail.is_empty() {
+        AppError::Ocr(label.to_owned())
+    } else {
+        AppError::Ocr(format!("{label}: {detail}"))
+    }
+}
+
 /// 解析内置模型资源文件;dev 模式下即 `src-tauri/resources/ocr/`。
 fn resource(app: &AppHandle, name: &str) -> Result<PathBuf> {
     let path = app
@@ -60,9 +76,13 @@ fn resource(app: &AppHandle, name: &str) -> Result<PathBuf> {
         .resolve(format!("resources/ocr/{name}"), BaseDirectory::Resource)
         .with_context(|| format!("resolve ocr resource {name}"))?;
     if !path.is_file() {
-        return Err(AppError::Ocr(format!(
-            "OCR 模型缺失: {name}(先执行 pnpm fetch:ocr-models)"
-        )));
+        // 开发场景的补救提示进日志;用户可见文案走本地化(对最终用户 pnpm 指令无意义)。
+        log::warn!("ocr model {name} missing; in dev run `pnpm fetch:ocr-models`");
+        return Err(ocr_error(
+            app,
+            crate::i18n::commands::Key::OcrModelMissing,
+            name,
+        ));
     }
     Ok(path)
 }
@@ -86,14 +106,14 @@ fn build_engine_from_paths(
     det: &std::path::Path,
     rec: &std::path::Path,
     dict: &std::path::Path,
-) -> Result<OAROCR> {
+) -> anyhow::Result<OAROCR> {
     OAROCRBuilder::new(
         det.to_string_lossy().into_owned(),
         rec.to_string_lossy().into_owned(),
         dict.to_string_lossy().into_owned(),
     )
     .build()
-    .map_err(|err| AppError::Ocr(format!("构建 OCR 引擎失败: {err}")))
+    .map_err(|err| anyhow::anyhow!("{err}"))
 }
 
 /// 对一张 RGBA 图做整图 OCR,返回按阅读顺序排列的行。
@@ -110,14 +130,16 @@ pub fn recognize(app: &AppHandle, image: &RgbaImage) -> Result<Vec<OcrLine>> {
     let mut guard = crate::core::sync::lock_unpoisoned(&ENGINE);
     if guard.as_ref().map(|(k, _)| k != &key).unwrap_or(true) {
         let started = std::time::Instant::now();
-        let engine = build_engine_from_paths(&det, &rec, &dict)?;
+        let engine = build_engine_from_paths(&det, &rec, &dict)
+            .map_err(|err| ocr_error(app, crate::i18n::commands::Key::OcrEngineBuildFailed, err))?;
         log::info!("ocr engine ({key}) ready in {:?}", started.elapsed());
         *guard = Some((key, engine));
     }
     let (_, engine) = guard.as_mut().expect("ocr engine just built");
 
     let started = std::time::Instant::now();
-    let lines = predict_lines(engine, image)?;
+    let lines = predict_lines(engine, image)
+        .map_err(|err| ocr_error(app, crate::i18n::commands::Key::OcrRecognizeFailed, err))?;
     log::info!(
         "ocr recognized {} lines in {:?}",
         lines.len(),
@@ -128,12 +150,12 @@ pub fn recognize(app: &AppHandle, image: &RgbaImage) -> Result<Vec<OcrLine>> {
     Ok(lines)
 }
 
-fn predict_lines(engine: &mut OAROCR, image: &RgbaImage) -> Result<Vec<OcrLine>> {
+fn predict_lines(engine: &mut OAROCR, image: &RgbaImage) -> anyhow::Result<Vec<OcrLine>> {
     // oar-ocr 管线接收 RGB 图;截屏帧是 RGBA,从借用直接转出 RGB,不复制原图。
     let rgb: image::RgbImage = image::buffer::ConvertBuffer::convert(image);
     let results = engine
         .predict(vec![rgb])
-        .map_err(|err| AppError::Ocr(format!("OCR 识别失败: {err}")))?;
+        .map_err(|err| anyhow::anyhow!("{err}"))?;
 
     let mut lines = Vec::new();
     for result in &results {

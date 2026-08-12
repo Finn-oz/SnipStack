@@ -25,6 +25,15 @@ pub enum CommandKey {
     DragImageMissing,
     DragTextEmpty,
     ExternalUrlUnsupported,
+    OcrModelMissing,
+    OcrEngineBuildFailed,
+    OcrRecognizeFailed,
+    OcrPackUnknown,
+    OcrPackRequestFailed,
+    OcrPackHttpError,
+    OcrPackDownloadInterrupted,
+    OcrPackDownloadFailed,
+    OcrPackSizeMismatch,
 }
 
 #[derive(Debug, Clone, Copy)]

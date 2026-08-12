@@ -17,7 +17,7 @@ use serde::Serialize;
 use tauri::{AppHandle, Emitter};
 
 use crate::core::in_flight::InFlight;
-use crate::core::{AppError, Result};
+use crate::core::Result;
 
 /// 与前端 src/constants/events.ts 的 TAURI_EVENT.OCR_PACK_PROGRESS 一一对应。
 pub const PACK_PROGRESS_EVENT: &str = "ocr://pack-progress";
@@ -130,11 +130,11 @@ fn emit_progress(app: &AppHandle, id: &str, received: u64, total: u64, error: Op
     );
 }
 
-fn find(id: &str) -> Result<&'static LanguagePack> {
+fn find(app: &AppHandle, id: &str) -> Result<&'static LanguagePack> {
     PACKS
         .iter()
         .find(|pack| pack.id == id)
-        .ok_or_else(|| AppError::Ocr(format!("未知的 OCR 语言包: {id}")))
+        .ok_or_else(|| super::ocr_error(app, crate::i18n::commands::Key::OcrPackUnknown, id))
 }
 
 fn packs_root(app: &AppHandle) -> Result<PathBuf> {
@@ -169,7 +169,7 @@ pub fn list(app: &AppHandle) -> Vec<PackStatus> {
 }
 
 pub fn delete(app: &AppHandle, id: &str) -> Result<()> {
-    let pack = find(id)?;
+    let pack = find(app, id)?;
     let dir = packs_root(app)?.join(pack.id);
     if dir.is_dir() {
         std::fs::remove_dir_all(&dir).with_context(|| format!("delete ocr pack {id}"))?;
@@ -182,7 +182,7 @@ pub fn delete(app: &AppHandle, id: &str) -> Result<()> {
 /// **任何**失败路径都会 emit 带 error 的终态事件(前端据此收起进度条)。
 /// 同包已在下载中时直接返回,由进行中的任务继续广播进度。
 pub async fn download(app: &AppHandle, id: &str) -> Result<()> {
-    let pack = match find(id) {
+    let pack = match find(app, id) {
         Ok(pack) => pack,
         Err(err) => {
             emit_progress(app, id, 0, 0, Some(err.to_string()));
@@ -245,7 +245,9 @@ async fn fetch_file(
             }
         }
     }
-    Err(last_err.unwrap_or_else(|| AppError::Ocr(format!("下载 {file} 失败"))))
+    Err(last_err.unwrap_or_else(|| {
+        super::ocr_error(app, crate::i18n::commands::Key::OcrPackDownloadFailed, file)
+    }))
 }
 
 async fn fetch_one(
@@ -257,13 +259,15 @@ async fn fetch_one(
     base: u64,
     total: u64,
 ) -> Result<()> {
+    use crate::i18n::commands::Key;
+
     let response = http_client()
         .get(url)
         .send()
         .await
-        .map_err(|err| AppError::Ocr(format!("请求失败: {err}")))?
+        .map_err(|err| super::ocr_error(app, Key::OcrPackRequestFailed, err))?
         .error_for_status()
-        .map_err(|err| AppError::Ocr(format!("HTTP 错误: {err}")))?;
+        .map_err(|err| super::ocr_error(app, Key::OcrPackHttpError, err))?;
 
     let part = target.with_extension("part");
     let mut writer = std::io::BufWriter::new(
@@ -274,7 +278,8 @@ async fn fetch_one(
     let mut last_emit = std::time::Instant::now();
     let mut stream = response.bytes_stream();
     while let Some(chunk) = stream.next().await {
-        let chunk = chunk.map_err(|err| AppError::Ocr(format!("下载中断: {err}")))?;
+        let chunk =
+            chunk.map_err(|err| super::ocr_error(app, Key::OcrPackDownloadInterrupted, err))?;
         std::io::Write::write_all(&mut writer, &chunk)
             .with_context(|| format!("write {part:?}"))?;
         written += chunk.len() as u64;
@@ -290,9 +295,11 @@ async fn fetch_one(
 
     if written != expected {
         let _ = std::fs::remove_file(&part);
-        return Err(AppError::Ocr(format!(
-            "文件大小不符(得到 {written} 字节,预期 {expected}),已丢弃"
-        )));
+        return Err(super::ocr_error(
+            app,
+            Key::OcrPackSizeMismatch,
+            format!("{written} B / {expected} B"),
+        ));
     }
     std::fs::rename(&part, target).with_context(|| format!("rename {part:?}"))?;
     Ok(())

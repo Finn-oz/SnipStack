@@ -7,5 +7,14 @@ pub fn label(key: Key) -> &'static str {
         Key::DragImageMissing => "The image file no longer exists",
         Key::DragTextEmpty => "Text content is empty",
         Key::ExternalUrlUnsupported => "Only links starting with http or https can be opened",
+        Key::OcrModelMissing => "OCR model files are missing, please reinstall the app",
+        Key::OcrEngineBuildFailed => "Could not build the OCR engine",
+        Key::OcrRecognizeFailed => "Text recognition could not complete",
+        Key::OcrPackUnknown => "Unknown language pack",
+        Key::OcrPackRequestFailed => "Network request failed",
+        Key::OcrPackHttpError => "The download source returned an error",
+        Key::OcrPackDownloadInterrupted => "Download interrupted",
+        Key::OcrPackDownloadFailed => "No download source is reachable",
+        Key::OcrPackSizeMismatch => "Downloaded file is incomplete and was discarded",
     }
 }
