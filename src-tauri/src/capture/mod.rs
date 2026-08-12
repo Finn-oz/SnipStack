@@ -173,7 +173,10 @@ fn capture_frames(app: &AppHandle) -> Result<()> {
         let state = app.state::<SnipState>();
         let mut session = crate::core::sync::lock_unpoisoned(&state.session);
         let Some(current) = session.as_mut() else {
-            // 捕获期间被取消:目录清理由 cancel 完成,这里静默结束。
+            // 捕获期间被取消:cancel 的 remove_dir_all 可能早于本次帧落盘,
+            // 主动兜底删掉自己刚写的目录,别让含全屏内容的帧留成孤儿。
+            drop(session);
+            let _ = std::fs::remove_dir_all(&dir);
             return Ok(());
         };
         current.frames = frames;

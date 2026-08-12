@@ -33,6 +33,7 @@ log = "0.4"
 sqlx = { version = "0.9", default-features = false, features = ["runtime-tokio", "sqlite", "macros", "chrono", "migrate"] }
 chrono = { version = "0.4", default-features = false, features = ["clock", "serde"] }
 blake3 = "1"
+sha2 = "0.10"
 clipboard-rs = "0.3"
 uuid = { version = "1", features = ["v4"] }
 regex = "1"

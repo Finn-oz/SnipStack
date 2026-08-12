@@ -16,5 +16,6 @@ pub fn label(key: Key) -> &'static str {
         Key::OcrPackDownloadInterrupted => "下载中断",
         Key::OcrPackDownloadFailed => "所有下载源均不可用",
         Key::OcrPackSizeMismatch => "下载的文件不完整,已丢弃",
+        Key::OcrPackHashMismatch => "下载文件校验未通过,可能已损坏或被篡改,已丢弃",
     }
 }

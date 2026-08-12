@@ -16,5 +16,8 @@ pub fn label(key: Key) -> &'static str {
         Key::OcrPackDownloadInterrupted => "Download interrupted",
         Key::OcrPackDownloadFailed => "No download source is reachable",
         Key::OcrPackSizeMismatch => "Downloaded file is incomplete and was discarded",
+        Key::OcrPackHashMismatch => {
+            "Downloaded file failed verification (corrupt or tampered) and was discarded"
+        }
     }
 }

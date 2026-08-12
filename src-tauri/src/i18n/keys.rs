@@ -34,6 +34,7 @@ pub enum CommandKey {
     OcrPackDownloadInterrupted,
     OcrPackDownloadFailed,
     OcrPackSizeMismatch,
+    OcrPackHashMismatch,
 }
 
 #[derive(Debug, Clone, Copy)]

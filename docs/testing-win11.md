@@ -49,3 +49,16 @@ pnpm tauri dev
 - 向管理员权限窗口的自动粘贴不涉及(本产品仅复制,不模拟粘贴)。
 - 精确全屏覆盖层理论上可能触发 Windows 专注助手(勿扰);如实测出现,
   在此记录并评估上游 preview 同款的 -1px 规避。
+
+## 安全评审已知项(记录,非阻塞)
+
+- **macOS 密码管理器排除未实现**(安全评审 F1):剪贴板排除约定只做了 Windows
+  三种格式。macOS 的 `org.nspasteboard.ConcealedType` 未处理——但 macOS 非发布
+  目标(仅开发用),上游 EcoPaste 亦未实现。若将来发布 macOS,需在读取路径检测
+  concealed/transient 类型并同权跳过入库。
+- **assetProtocol scope 与 CSP**(F9,继承自上游,非本次引入):`tauri.conf.json`
+  的 `assetProtocol.scope = ["**/*"]` + `csp: null` 会放大任一前端 XSS 的影响。
+  当前无窗口加载远程内容,无现实触发路径;发布前建议独立收敛 scope 到实际资源
+  目录并配置非空 CSP。
+- OCR 模型与语言包下载已按 SHA-256(来自 oar-ocr 注册表)校验,内置模型哈希由
+  `packs.rs` 的 `bundled_builtin_models_match_pinned_hashes` 测试在 CI 守护。
