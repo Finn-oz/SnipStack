@@ -165,6 +165,9 @@ const OcrLanguageControl: FC<OcrLanguageControlProps> = (props) => {
           );
         })}
       </Radio.Group>
+      <span className="text-ant-tertiary text-xs">
+        {t("snipLanguage.scopeNote")}
+      </span>
     </div>
   );
 };

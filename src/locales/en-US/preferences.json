@@ -707,7 +707,8 @@
       "korean": "Korean",
       "latin": "Latin-script languages (Fr/De/Es…)",
       "th": "Thai"
-    }
+    },
+    "scopeNote": "Language packs only recognize their own script plus basic Latin letters — no Chinese. Switch back to built-in for Chinese text."
   },
   "status": {
     "alwaysOn": "Default",
