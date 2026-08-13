@@ -125,15 +125,30 @@ pub fn recognize(app: &AppHandle, image: &RgbaImage) -> Result<Vec<OcrLine>> {
         .try_state::<crate::settings::SettingsStore>()
         .map(|store| store.snapshot().snip.language)
         .unwrap_or_else(|| packs::BUILTIN_LANGUAGE_ID.to_owned());
-    let (key, det, rec, dict) = engine_spec(app, &selected)?;
+    let mut spec = engine_spec(app, &selected)?;
 
     let mut guard = crate::core::sync::lock_unpoisoned(&ENGINE);
-    if guard.as_ref().map(|(k, _)| k != &key).unwrap_or(true) {
-        let started = std::time::Instant::now();
-        let engine = build_engine_from_paths(&det, &rec, &dict)
-            .map_err(|err| ocr_error(app, crate::i18n::commands::Key::OcrEngineBuildFailed, err))?;
-        log::info!("ocr engine ({key}) ready in {:?}", started.elapsed());
-        *guard = Some((key, engine));
+    if guard.as_ref().map(|(k, _)| k != &spec.0).unwrap_or(true) {
+        // 缓存未命中才(重)建。语言包在构建前复核一次 SHA-256:同字节数的
+        // 损坏/替换文件在此拦下并删除,按「包不可用」回落内置模型
+        // (引擎随后常驻缓存,哈希不在每次识别路径上)。
+        if spec.0 != packs::BUILTIN_LANGUAGE_ID && !packs::verify_on_load(app, &spec.0) {
+            log::warn!(
+                "ocr language pack {} failed integrity check, falling back to builtin",
+                spec.0
+            );
+            spec = engine_spec(app, packs::BUILTIN_LANGUAGE_ID)?;
+        }
+        let (key, det, rec, dict) = &spec;
+        // 回落后可能命中已缓存的内置引擎,再查一次避免无谓重建。
+        if guard.as_ref().map(|(k, _)| k != key).unwrap_or(true) {
+            let started = std::time::Instant::now();
+            let engine = build_engine_from_paths(det, rec, dict).map_err(|err| {
+                ocr_error(app, crate::i18n::commands::Key::OcrEngineBuildFailed, err)
+            })?;
+            log::info!("ocr engine ({key}) ready in {:?}", started.elapsed());
+            *guard = Some((key.clone(), engine));
+        }
     }
     let (_, engine) = guard.as_mut().expect("ocr engine just built");
 

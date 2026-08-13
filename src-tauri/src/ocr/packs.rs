@@ -186,8 +186,8 @@ fn size_matches(path: &PathBuf, expected: u64) -> bool {
 }
 
 /// 已完整下载时返回 (rec, dict) 绝对路径。
-/// 加载期只按字节数判「是否已下载」;真正的完整性校验在下载落盘时用 SHA-256 完成,
-/// 能写该目录的本地攻击者本就越过了信任边界,加载期再哈希收益有限、代价(每次识别哈希 20MB)不值。
+/// 这里只按字节数判「是否已下载」(列表渲染高频调用,不宜哈希 20MB);
+/// SHA-256 在下载落盘时校验一次,引擎(重)建前再由 [`verify_on_load`] 复核一次。
 pub fn resolve(app: &AppHandle, id: &str) -> Option<(PathBuf, PathBuf)> {
     let pack = PACKS.iter().find(|pack| pack.id == id)?;
     let dir = packs_root(app).ok()?.join(pack.id);
@@ -195,6 +195,36 @@ pub fn resolve(app: &AppHandle, id: &str) -> Option<(PathBuf, PathBuf)> {
     let dict = dir.join(pack.dict.file);
     (size_matches(&rec, pack.rec.bytes) && size_matches(&dict, pack.dict.bytes))
         .then_some((rec, dict))
+}
+
+/// 引擎构建前的加载期完整性复核:对 rec + dict 逐一比对钉死的 SHA-256。
+/// 只在引擎缓存未命中(语言切换/首次识别/空闲淘汰后)时调用,不在每次识别路径上。
+/// 校验失败视为包损坏(磁盘静默损坏或被同字节数文件替换):删除整包目录,
+/// 让状态回到「未下载」以便重新获取,并返回 `false` 由调用方回落内置模型。
+pub fn verify_on_load(app: &AppHandle, id: &str) -> bool {
+    let Some(pack) = PACKS.iter().find(|pack| pack.id == id) else {
+        return false;
+    };
+    let Some((rec, dict)) = resolve(app, id) else {
+        return false;
+    };
+    if hash_matches(&rec, pack.rec.sha256) && hash_matches(&dict, pack.dict.sha256) {
+        return true;
+    }
+    log::warn!("ocr pack {id} failed sha256 verification on load, removing");
+    if let Ok(root) = packs_root(app) {
+        let _ = std::fs::remove_dir_all(root.join(pack.id));
+    }
+    false
+}
+
+/// 文件内容的 SHA-256 是否等于预期(小写十六进制);读不到文件按不匹配处理。
+fn hash_matches(path: &std::path::Path, expected: &str) -> bool {
+    use sha2::{Digest, Sha256};
+    let Ok(bytes) = std::fs::read(path) else {
+        return false;
+    };
+    format!("{:x}", Sha256::digest(&bytes)) == expected
 }
 
 pub fn list(app: &AppHandle) -> Vec<PackStatus> {
@@ -364,6 +394,23 @@ async fn fetch_one(
 mod tests {
     use super::*;
     use sha2::{Digest, Sha256};
+
+    /// 加载期复核的底层判定:内容漂移(同字节数篡改)与文件缺失都必须判不匹配。
+    #[test]
+    fn hash_matches_detects_content_drift() {
+        let dir = std::env::temp_dir().join(format!("snipstack-hash-test-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).expect("create test dir");
+        let path = dir.join("asset.bin");
+        std::fs::write(&path, b"model bytes").expect("write test asset");
+
+        let good = format!("{:x}", Sha256::digest(b"model bytes"));
+        let bad = format!("{:x}", Sha256::digest(b"tampered !!"));
+        assert!(hash_matches(&path, &good));
+        assert!(!hash_matches(&path, &bad), "same-size drift must fail");
+        assert!(!hash_matches(&dir.join("missing.bin"), &good));
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 
     /// 每个钉死的 SHA-256 都是 64 位小写十六进制;防止手误录成大写/截断,
     /// 否则下载永远校验失败。

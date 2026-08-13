@@ -7,7 +7,8 @@
 //! 广播一次 `snip://done`。
 //!
 //! 坐标约定:`SnipFrame` 内全部为物理像素;与前端交互的选区为该覆盖层窗口内的
-//! CSS 像素(每个覆盖层恰好铺满一个显示器,折算只需乘 scale factor)。
+//! CSS 像素(每个覆盖层恰好铺满一个显示器,折算只需乘 scale factor;优先取覆盖层
+//! 窗口此刻的 DPI,回落捕获时的 monitor scale——两者在混合 DPI 下可能短暂不一致)。
 //!
 //! 冻结帧含全屏内容,按敏感数据对待:每会话独立临时目录,confirm/cancel 即删,
 //! 应用启动时清扫整个根目录兜底(覆盖崩溃/强杀残留)。
@@ -48,6 +49,9 @@ struct SnipFrame {
 /// 一次截屏取字会话。`start_snip` 在锁内原子占位(此时 `frames` 为空),
 /// 后台捕获完成后回填;并发触发以「session 已存在」为准直接忽略。
 struct SnipSession {
+    /// 会话唯一标识。所有异步续段(捕获回填、建窗、失败清理)动手前都要
+    /// 核对当前会话仍是自己,防止旧会话的迟到任务误伤新会话。
+    id: String,
     frames: Vec<SnipFrame>,
     /// 会话开始时光标所在的显示器;该覆盖层获得焦点,Esc 才能直达。
     focus_index: usize,
@@ -98,6 +102,7 @@ fn emit_done(app: &AppHandle, ok: bool, chars: usize, error: Option<String>) {
 /// 启动一次截屏取字会话。已有会话时忽略(热键连按/多入口并发)。
 /// 占位与检查在同一锁内完成;截屏与编码移入阻塞线程池,不冻结热键回调线程。
 pub fn start_snip(app: &AppHandle) -> Result<()> {
+    let session_id = uuid::Uuid::new_v4().to_string();
     {
         let state = app.state::<SnipState>();
         let mut session = crate::core::sync::lock_unpoisoned(&state.session);
@@ -105,30 +110,52 @@ pub fn start_snip(app: &AppHandle) -> Result<()> {
             return Ok(());
         }
         *session = Some(SnipSession {
+            id: session_id.clone(),
             frames: Vec::new(),
             focus_index: 0,
-            dir: temp_root().join(uuid::Uuid::new_v4().to_string()),
+            dir: temp_root().join(&session_id),
         });
     }
 
     let app = app.clone();
     tauri::async_runtime::spawn_blocking(move || {
-        if let Err(err) = capture_frames(&app) {
-            log::error!("start snip failed: {err}");
-            let _ = cancel_snip(&app);
-            emit_done(&app, false, 0, Some(err.to_string()));
+        // panic 也必须走清理:xcap 在显示器热插拔等场景可能 panic,若跳过清理,
+        // 残留的会话会让 start_snip 永远早退,截屏取字静默失效直到重启。
+        let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            capture_frames(&app, &session_id)
+        }));
+        let message = match outcome {
+            Ok(Ok(())) => return,
+            Ok(Err(err)) => err.to_string(),
+            Err(panic) => panic_message(panic.as_ref()),
+        };
+        log::error!("start snip failed: {message}");
+        // 只清理仍属于本会话的状态;失败若发生在会话已被取消/替换之后,不发终态事件。
+        if cancel_snip_if(&app, &session_id) {
+            emit_done(&app, false, 0, Some(message));
         }
     });
     Ok(())
 }
 
+fn panic_message(panic: &(dyn std::any::Any + Send)) -> String {
+    if let Some(text) = panic.downcast_ref::<&str>() {
+        (*text).to_owned()
+    } else if let Some(text) = panic.downcast_ref::<String>() {
+        text.clone()
+    } else {
+        "snip capture panicked".to_owned()
+    }
+}
+
 /// 抓取全部显示器冻结帧并回填会话,然后回主线程建覆盖层窗口。
-fn capture_frames(app: &AppHandle) -> Result<()> {
+fn capture_frames(app: &AppHandle, session_id: &str) -> Result<()> {
     let dir = {
         let state = app.state::<SnipState>();
         let session = crate::core::sync::lock_unpoisoned(&state.session);
         session
             .as_ref()
+            .filter(|s| s.id == session_id)
             .map(|s| s.dir.clone())
             .context("snip session cancelled")?
     };
@@ -172,8 +199,8 @@ fn capture_frames(app: &AppHandle) -> Result<()> {
     {
         let state = app.state::<SnipState>();
         let mut session = crate::core::sync::lock_unpoisoned(&state.session);
-        let Some(current) = session.as_mut() else {
-            // 捕获期间被取消:cancel 的 remove_dir_all 可能早于本次帧落盘,
+        let Some(current) = session.as_mut().filter(|s| s.id == session_id) else {
+            // 捕获期间被取消/替换:cancel 的 remove_dir_all 可能早于本次帧落盘,
             // 主动兜底删掉自己刚写的目录,别让含全屏内容的帧留成孤儿。
             drop(session);
             let _ = std::fs::remove_dir_all(&dir);
@@ -185,18 +212,49 @@ fn capture_frames(app: &AppHandle) -> Result<()> {
 
     // 建窗回主线程(macOS 硬约束,Windows 同样安全)。
     let main_app = app.clone();
+    let closure_session = session_id.to_owned();
     app.run_on_main_thread(move || {
+        // 闭包排队期间会话可能已被取消:不给死会话建覆盖层。
+        if !session_is_current(&main_app, &closure_session) {
+            return;
+        }
         for (index, (x, y, width, height)) in geometries.into_iter().enumerate() {
             if let Err(err) = build_overlay_window(&main_app, index, x, y, width, height) {
                 log::error!("build snip overlay {index} failed: {err}");
-                let _ = cancel_snip(&main_app);
-                emit_done(&main_app, false, 0, Some(err.to_string()));
+                if cancel_snip_if(&main_app, &closure_session) {
+                    emit_done(&main_app, false, 0, Some(err.to_string()));
+                }
                 return;
             }
         }
     })
     .context("dispatch overlay build")?;
     Ok(())
+}
+
+/// 当前会话是否仍是指定 id。
+fn session_is_current(app: &AppHandle, id: &str) -> bool {
+    let state = app.state::<SnipState>();
+    let session = crate::core::sync::lock_unpoisoned(&state.session);
+    session.as_ref().is_some_and(|s| s.id == id)
+}
+
+/// 仅当当前会话仍是指定 id 时取消并清理,返回是否真的取消了。
+/// 供异步失败路径使用:会话已被用户取消或被新会话替换时按空操作处理。
+fn cancel_snip_if(app: &AppHandle, id: &str) -> bool {
+    let dir = {
+        let state = app.state::<SnipState>();
+        let mut session = crate::core::sync::lock_unpoisoned(&state.session);
+        if session.as_ref().is_none_or(|s| s.id != id) {
+            return false;
+        }
+        session.take().map(|s| s.dir)
+    };
+    destroy_overlays(app);
+    if let Some(dir) = dir {
+        let _ = std::fs::remove_dir_all(dir);
+    }
+    true
 }
 
 /// 光标当前所在显示器的序号;取不到光标位置或不在任何屏内时回落 0。
@@ -259,13 +317,19 @@ pub fn overlay_ready(app: &AppHandle, monitor: usize) -> Result<()> {
     let Some(window) = app.get_webview_window(&label) else {
         return Ok(());
     };
-    window.show().context("show snip overlay")?;
 
     let focus_index = {
         let state = app.state::<SnipState>();
         let session = crate::core::sync::lock_unpoisoned(&state.session);
-        session.as_ref().map(|s| s.focus_index).unwrap_or(0)
+        session.as_ref().map(|s| s.focus_index)
     };
+    // 会话已取消:这是迟到的就绪回调,销毁残留窗口而不是把死覆盖层亮出来。
+    let Some(focus_index) = focus_index else {
+        let _ = window.destroy();
+        return Ok(());
+    };
+
+    window.show().context("show snip overlay")?;
     if monitor == focus_index {
         let _ = window.set_focus();
     }
@@ -313,6 +377,13 @@ fn destroy_overlays(app: &AppHandle) {
 /// 确认选区:立即关掉覆盖层,后台完成裁剪 → OCR → 入历史 → 写剪贴板。
 /// 除「选区过小」外的任何终态都广播 `snip://done`(覆盖层已销毁,事件是唯一反馈通道)。
 pub async fn confirm_snip(app: AppHandle, selection: SnipSelection) -> Result<()> {
+    // CSS→物理像素换算优先用覆盖层窗口此刻生效的 DPI:混合 DPI 下 DPI 变更事件
+    // 未处理完时,xcap 报的 monitor scale 可能与 webview 实际 DPR 短暂不一致,
+    // 选区是按后者量出来的。须在销毁覆盖层前读取;拿不到再回落捕获时的 monitor scale。
+    let overlay_scale = app
+        .get_webview_window(&format!("{OVERLAY_LABEL_PREFIX}{}", selection.monitor))
+        .and_then(|window| window.scale_factor().ok());
+
     // 取出会话并销毁覆盖层,先把屏幕还给用户;临时目录立即删除。
     let (frame, dir) = {
         let state = app.state::<SnipState>();
@@ -334,7 +405,7 @@ pub async fn confirm_snip(app: AppHandle, selection: SnipSelection) -> Result<()
 
     // CSS 像素 → 物理像素,并夹取到帧边界内。
     let (frame_w, frame_h) = (frame.image.width(), frame.image.height());
-    let scale = frame.scale_factor;
+    let scale = overlay_scale.unwrap_or(frame.scale_factor);
     let x = ((selection.x * scale).round().max(0.0) as u32).min(frame_w.saturating_sub(1));
     let y = ((selection.y * scale).round().max(0.0) as u32).min(frame_h.saturating_sub(1));
     let w = ((selection.width * scale).round() as u32).min(frame_w - x);
