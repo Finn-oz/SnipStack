@@ -431,7 +431,9 @@ pub async fn confirm_snip(app: AppHandle, selection: SnipSelection) -> Result<()
                 ocr::join_lines(&lines, settings.line_break)
             }
         };
-        Ok::<_, AppError>(text)
+        // trim 一次成为唯一真值:历史入库、剪贴板写入、回环抑制哈希与字数统计
+        // 必须基于同一串,否则 OCR 带首尾空白时 watcher 会再记一条重复历史。
+        Ok::<_, AppError>(text.trim().to_owned())
     })
     .await
     .unwrap_or_else(|err| Err(AppError::Other(anyhow::anyhow!("snip task crashed: {err}"))));
@@ -490,7 +492,8 @@ fn decode_barcodes(image: &RgbaImage) -> Option<String> {
 /// (URL/邮箱等子类型识别、摘要、内容哈希去重全部复用同一套逻辑)。
 /// 识别为空则不入库;同文本重截由 persist 的去重逻辑合并。
 async fn save_history_item(app: &AppHandle, text: &str) -> Result<()> {
-    let Some(item) = clipboard::plain_text_item(text) else {
+    let sensitive = app.state::<SettingsStore>().snapshot().clipboard.sensitive;
+    let Some(item) = clipboard::plain_text_item(text, &sensitive) else {
         return Ok(());
     };
 

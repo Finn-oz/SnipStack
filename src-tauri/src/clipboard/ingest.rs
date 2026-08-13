@@ -303,16 +303,21 @@ pub fn build_item_with_settings(
 }
 
 /// snip 取字等内部产生的纯文本入库：与用户复制的纯文本走同一套
-/// 子类型识别 / 摘要 / 去重哈希，保证历史里两种来源的文本条目同构。
-/// trim 后为空返回 `None`。
-pub(crate) fn plain_text_item(text: &str) -> Option<ClipboardItem> {
+/// 子类型识别 / 摘要 / 去重哈希与密文采集策略，保证历史里两种来源的文本条目同构。
+/// trim 后为空、或命中密文且用户关闭了密文采集时返回 `None`。
+pub(crate) fn plain_text_item(text: &str, sensitive: &Sensitive) -> Option<ClipboardItem> {
     let plain = text.trim();
     if plain.is_empty() {
         return None;
     }
 
+    let is_sensitive = contains_secret(plain);
+    if is_sensitive && !sensitive.collect_secrets {
+        return None;
+    }
+
     let draft = draft_plain_text(plain, Some(plain.to_owned()), make_summary(plain));
-    Some(item_from_draft(draft, contains_secret(plain)))
+    Some(item_from_draft(draft, is_sensitive))
 }
 
 /// 草稿 → 完整入库记录：补齐 id / 哈希 / 时间戳等与内容无关的字段。
@@ -652,6 +657,34 @@ mod tests {
         assert_eq!(item.sub_kind, Some(ClipboardSubKind::Rtf));
         assert_eq!(item.content, r"{\rtf1 plain repr}");
         assert_eq!(item.search_text.as_deref(), Some("plain repr"));
+    }
+
+    #[test]
+    fn plain_text_item_honors_secret_policy_and_trims() {
+        let token = "sk-abcdefghijklmnopqrstuvwxyzABCDE1234567890";
+        let off = Sensitive {
+            collect_secrets: false,
+            redact_secrets: false,
+        };
+        let on = Sensitive {
+            collect_secrets: true,
+            redact_secrets: false,
+        };
+
+        // 关闭密文采集:命中密文直接不入库,与 watcher 采集策略一致。
+        assert!(plain_text_item(token, &off).is_none());
+
+        // 开启密文采集:入库并标记敏感。
+        let item = plain_text_item(token, &on).unwrap();
+        assert!(item.is_sensitive);
+
+        // 首尾空白参与不了内容:与用户复制同串文本产生的条目哈希一致(去重前提)。
+        let spaced = plain_text_item("  你好 world \n", &on).unwrap();
+        assert_eq!(spaced.content, "你好 world");
+        assert!(!spaced.is_sensitive);
+
+        // 空白串不入库。
+        assert!(plain_text_item("   \n\t", &on).is_none());
     }
 
     #[test]
