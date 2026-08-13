@@ -525,7 +525,7 @@ mod tests {
     /// 用 rxing 自编码一个 QR 再走产品解码路径,验证「框选到码直接取值」链路。
     #[test]
     fn decodes_qr_code_in_selection() {
-        let content = "https://github.com/snipstack/SnipStack";
+        let content = "https://github.com/Finn-oz/SnipStack";
         let matrix = rxing::qrcode::QRCodeWriter
             .encode(content, &rxing::BarcodeFormat::QR_CODE, 240, 240)
             .expect("encode qr fixture");

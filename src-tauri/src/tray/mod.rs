@@ -24,7 +24,7 @@ use crate::window::CLIPBOARD_WINDOW_LABEL;
 use crate::window::{self, PREFERENCE_WINDOW_LABEL};
 
 const TRAY_ID: &str = "app-tray";
-const GITHUB_URL: &str = "https://github.com/snipstack/SnipStack";
+const GITHUB_URL: &str = "https://github.com/Finn-oz/SnipStack";
 
 const MENU_SNIP: &str = "tray::snip";
 const MENU_PREFERENCE: &str = "tray::preference";

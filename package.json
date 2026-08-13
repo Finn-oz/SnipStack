@@ -5,13 +5,13 @@
   "description": "A local-first clipboard manager for macOS and Windows.",
   "author": "SnipStack Contributors",
   "license": "Apache-2.0",
-  "homepage": "https://github.com/snipstack/SnipStack#readme",
+  "homepage": "https://github.com/Finn-oz/SnipStack#readme",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/snipstack/SnipStack.git"
+    "url": "git+https://github.com/Finn-oz/SnipStack.git"
   },
   "bugs": {
-    "url": "https://github.com/snipstack/SnipStack/issues"
+    "url": "https://github.com/Finn-oz/SnipStack/issues"
   },
   "type": "module",
   "packageManager": "pnpm@10.33.1",
