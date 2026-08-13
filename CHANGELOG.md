@@ -8,6 +8,17 @@ clipboard-manager codebase, see the upstream changelog.
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-08-14
+
+### Added
+
+- Download landing page (https://finn-oz.github.io/SnipStack/).
+
+### Changed
+
+- First release shipped through the auto-updater — this version verifies
+  the update pipeline end-to-end for installed v0.1.0 users.
+
 ## [0.1.0] - 2026-08-14
 
 First public release. Windows 11 x64, NSIS installer, unsigned (SmartScreen

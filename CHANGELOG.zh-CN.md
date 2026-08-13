@@ -7,6 +7,16 @@ SnipStack 是 [EcoPaste](https://github.com/EcoPasteHub/EcoPaste) 的硬分叉
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-08-14
+
+### 新增
+
+- 官网下载页(https://finn-oz.github.io/SnipStack/)。
+
+### 变更
+
+- 首个通过自动更新分发的版本——用于对已安装 v0.1.0 的用户端到端验证更新链路。
+
 ## [0.1.0] - 2026-08-14
 
 首个公开版本。Windows 11 x64,NSIS 安装包,暂未签名(首次运行会出现
