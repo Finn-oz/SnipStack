@@ -85,7 +85,7 @@ mod windows_impl {
         }
         let value = unsafe {
             GetClipboardData(format).ok().and_then(|handle| {
-                let hglobal = HGLOBAL(handle.0);
+                let hglobal = HGLOBAL(handle.0 as *mut core::ffi::c_void);
                 // 负载大小由源应用决定,读 DWORD 前必须确认至少 4 字节,否则越界读。
                 if GlobalSize(hglobal) < 4 {
                     return None;
