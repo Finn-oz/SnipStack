@@ -260,18 +260,6 @@ pub async fn fill_item_search_text(pool: &SqlitePool, id: &str, text: &str) -> R
     Ok(result.rows_affected() > 0)
 }
 
-/// 覆盖写搜索文本。调用方保证 `text` 非空——不要用空值抹掉已有索引,
-/// 「标记空结果」请走 [`fill_item_search_text`]。
-pub async fn update_item_search_text(pool: &SqlitePool, id: &str, text: &str) -> Result<()> {
-    sqlx::query("UPDATE clipboard_items SET search_text = ? WHERE id = ?")
-        .bind(text)
-        .bind(id)
-        .execute(pool)
-        .await
-        .context("failed to update clipboard item search text")?;
-    Ok(())
-}
-
 /// 更新条目所属分组；不刷新 `updated_at`，避免污染最近使用排序。
 pub async fn update_item_group(pool: &SqlitePool, id: &str, group_id: Option<&str>) -> Result<()> {
     sqlx::query("UPDATE clipboard_items SET group_id = ? WHERE id = ?")
@@ -661,14 +649,6 @@ mod tests {
             Some(Some("识别文本".to_owned()))
         );
 
-        // 覆盖写入口:非空文本可刷新已有值。
-        update_item_search_text(&pool, "a", "更好的文本")
-            .await
-            .unwrap();
-        assert_eq!(
-            get_item_search_text(&pool, "a").await.unwrap(),
-            Some(Some("更好的文本".to_owned()))
-        );
         // 不存在的条目:读到外层 None,fill 无行受影响。
         assert_eq!(get_item_search_text(&pool, "missing").await.unwrap(), None);
         assert!(!fill_item_search_text(&pool, "missing", "x").await.unwrap());

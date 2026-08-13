@@ -299,8 +299,26 @@ pub fn build_item_with_settings(
         return Ok(None);
     }
 
+    Ok(Some(item_from_draft(draft, is_sensitive)))
+}
+
+/// snip 取字等内部产生的纯文本入库：与用户复制的纯文本走同一套
+/// 子类型识别 / 摘要 / 去重哈希，保证历史里两种来源的文本条目同构。
+/// trim 后为空返回 `None`。
+pub(crate) fn plain_text_item(text: &str) -> Option<ClipboardItem> {
+    let plain = text.trim();
+    if plain.is_empty() {
+        return None;
+    }
+
+    let draft = draft_plain_text(plain, Some(plain.to_owned()), make_summary(plain));
+    Some(item_from_draft(draft, contains_secret(plain)))
+}
+
+/// 草稿 → 完整入库记录：补齐 id / 哈希 / 时间戳等与内容无关的字段。
+fn item_from_draft(draft: Draft, is_sensitive: bool) -> ClipboardItem {
     let now = Utc::now();
-    Ok(Some(ClipboardItem {
+    ClipboardItem {
         id: uuid::Uuid::new_v4().to_string(),
         content_hash: content_hash(draft.kind, &draft.content),
         kind: draft.kind,
@@ -331,7 +349,7 @@ pub fn build_item_with_settings(
         available_actions: Vec::new(),
         color_preview: None,
         display_created_at: String::new(),
-    }))
+    }
 }
 
 #[cfg(test)]

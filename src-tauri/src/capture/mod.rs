@@ -18,15 +18,13 @@ use std::path::PathBuf;
 use std::sync::Mutex;
 
 use image::buffer::ConvertBuffer;
-use image::{ImageEncoder, RgbImage, RgbaImage};
+use image::{RgbImage, RgbaImage};
 use serde::Deserialize;
 use tauri::{
     AppHandle, Emitter, Manager, PhysicalPosition, PhysicalSize, WebviewUrl, WebviewWindowBuilder,
 };
 
 use crate::core::{AppError, Result};
-use crate::db::items::content_hash;
-use crate::db::models::{ClipboardItem, ClipboardKind};
 use crate::settings::SettingsStore;
 use crate::{clipboard, ocr};
 
@@ -419,7 +417,6 @@ pub async fn confirm_snip(app: AppHandle, selection: SnipSelection) -> Result<()
 
     let settings = app.state::<SettingsStore>().snapshot().snip;
     let ocr_app = app.clone();
-    let save_to_history = settings.save_to_history;
     let outcome = tauri::async_runtime::spawn_blocking(move || {
         // QR/条码优先:命中直接取码值(TextSniper 同款行为),未命中回落 OCR。
         let text = if settings.detect_qr {
@@ -434,17 +431,12 @@ pub async fn confirm_snip(app: AppHandle, selection: SnipSelection) -> Result<()
                 ocr::join_lines(&lines, settings.line_break)
             }
         };
-        // PNG 编码也是重活,一并留在阻塞线程,不占 async runtime。
-        let png = save_to_history
-            .then(|| encode_png(&cropped))
-            .transpose()?
-            .map(|bytes| (bytes, cropped.width(), cropped.height()));
-        Ok::<_, AppError>((text, png))
+        Ok::<_, AppError>(text)
     })
     .await
     .unwrap_or_else(|err| Err(AppError::Other(anyhow::anyhow!("snip task crashed: {err}"))));
 
-    let (text, png) = match outcome {
+    let text = match outcome {
         Ok(value) => value,
         Err(err) => {
             log::error!("snip ocr failed: {err}");
@@ -453,9 +445,11 @@ pub async fn confirm_snip(app: AppHandle, selection: SnipSelection) -> Result<()
         }
     };
 
+    // 历史里存识别出的**文本**(与普通复制的文本条目同构),不存切图——
+    // 用户截屏取字要的是文字,图片条目既占空间又不是他要找回的东西。
     // 先入历史再写剪贴板:即使剪贴板被占用失败,识别结果仍可从历史找回。
-    if let Some((png, width, height)) = png {
-        if let Err(err) = save_history_item(&app, png, width, height, &text).await {
+    if settings.save_to_history {
+        if let Err(err) = save_history_item(&app, &text).await {
             log::error!("save snip history failed: {err}");
         }
     }
@@ -492,78 +486,16 @@ fn decode_barcodes(image: &RgbaImage) -> Option<String> {
     Some(texts.join("\n"))
 }
 
-fn encode_png(image: &RgbaImage) -> Result<Vec<u8>> {
-    let mut png = Vec::new();
-    image::codecs::png::PngEncoder::new(&mut png)
-        .write_image(
-            image.as_raw(),
-            image.width(),
-            image.height(),
-            image::ExtendedColorType::Rgba8,
-        )
-        .context("encode snip png")?;
-    Ok(png)
-}
-
-/// 把裁剪图作为图片条目入历史,`search_text` 填 OCR 文本使 FTS 可搜。
-/// 识别为空时写入空串作「已处理」标记(后台图片 OCR 据此跳过);
-/// 去重命中(同像素再截)时只用**非空**结果更新,绝不覆盖掉已有索引。
-async fn save_history_item(
-    app: &AppHandle,
-    png: Vec<u8>,
-    width: u32,
-    height: u32,
-    text: &str,
-) -> Result<()> {
-    let payload = clipboard::ImagePayload {
-        bytes: png,
-        width,
-        height,
-    };
-    let store = app.state::<clipboard::ImageStore>();
-    let stored = store.store(&payload)?;
-
-    let now = chrono::Utc::now();
-    let item = ClipboardItem {
-        id: uuid::Uuid::new_v4().to_string(),
-        kind: ClipboardKind::Image,
-        sub_kind: None,
-        group_id: None,
-        source_app_id: None,
-        content_hash: content_hash(ClipboardKind::Image, &stored.file_name),
-        content: stored.file_name,
-        search_text: Some(text.to_owned()),
-        summary: None,
-        file_types: None,
-        size: Some(stored.size),
-        width: Some(stored.width),
-        height: Some(stored.height),
-        use_count: 1,
-        is_favorite: false,
-        is_pinned: false,
-        is_sensitive: false,
-        platform: clipboard::current_platform(),
-        note: None,
-        created_at: now,
-        updated_at: now,
-        source_app_name: None,
-        source_app_icon_file: None,
-        source_app_icon_path: None,
-        image_thumbnail_path: None,
-        file_entries: None,
-        files_preview_kind: None,
-        available_actions: Vec::new(),
-        color_preview: None,
-        display_created_at: String::new(),
+/// 把识别文本作为**文本条目**入历史,与用户复制的纯文本同构
+/// (URL/邮箱等子类型识别、摘要、内容哈希去重全部复用同一套逻辑)。
+/// 识别为空则不入库;同文本重截由 persist 的去重逻辑合并。
+async fn save_history_item(app: &AppHandle, text: &str) -> Result<()> {
+    let Some(item) = clipboard::plain_text_item(text) else {
+        return Ok(());
     };
 
     let pool = app.state::<crate::db::DatabaseState>().pool().await;
-    let result = clipboard::persist_and_notify(app, &pool, &item, None).await?;
-    if result.deduplicated && !text.is_empty() {
-        // 同图重截:用非空结果补写/刷新 OCR 文本(空结果不写,避免语言包不匹配
-        // 等场景抹掉已有索引;语义约束见仓储函数文档)。
-        crate::db::items::update_item_search_text(&pool, &result.id, text).await?;
-    }
+    clipboard::persist_and_notify(app, &pool, &item, None).await?;
     Ok(())
 }
 
