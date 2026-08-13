@@ -1,11 +1,11 @@
 [package]
 name = "SnipStack"
 version = "0.1.0"
-description = "A local-first clipboard manager for macOS and Windows."
+description = "Snip-to-text screen OCR + searchable clipboard history for Windows 11."
 authors = ["SnipStack Contributors"]
 license = "Apache-2.0"
-homepage = "https://github.com/snipstack/SnipStack"
-repository = "https://github.com/snipstack/SnipStack"
+homepage = "https://github.com/Finn-oz/SnipStack"
+repository = "https://github.com/Finn-oz/SnipStack"
 readme = "../README.md"
 publish = false
 edition = "2021"
@@ -16,7 +16,7 @@ edition = "2021"
 # The `_lib` suffix may seem redundant but it is necessary
 # to make the lib name unique and wouldn't conflict with the bin name.
 # This seems to be only an issue on Windows, see https://github.com/rust-lang/cargo/issues/8519
-name = "eco_paste_lib"
+name = "snipstack_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]
@@ -33,6 +33,7 @@ log = "0.4"
 sqlx = { version = "0.9", default-features = false, features = ["runtime-tokio", "sqlite", "macros", "chrono", "migrate"] }
 chrono = { version = "0.4", default-features = false, features = ["clock", "serde"] }
 blake3 = "1"
+sha2 = "0.10"
 clipboard-rs = "0.3"
 uuid = { version = "1", features = ["v4"] }
 regex = "1"
@@ -45,7 +46,16 @@ tauri-plugin-prevent-default = "5"
 auto-launch = "0.6"
 rodio = { version = "0.20", default-features = false, features = ["symphonia-mp3"] }
 file_icon_provider = "1"
-image = { version = "0.25", default-features = false, features = ["png"] }
+image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
+# 截屏取字:多显示器物理像素截屏。
+xcap = "0.9"
+# 截屏取字:PP-OCRv5 ONNX 推理(内部 ort 静态链接 ONNX Runtime,无需分发动态库)。
+oar-ocr = "0.9"
+# 截屏取字:框选区域内 QR/条码解码(zxing 的 Rust 移植)。
+rxing = "0.9"
+# OCR 语言包下载(tauri-plugin-updater 已引入 reqwest,此处显式声明复用)。
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "stream"] }
+futures-util = "0.3"
 tauri-plugin-os = "2"
 tauri-plugin-updater = "2"
 time = "0.3"

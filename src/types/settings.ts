@@ -84,7 +84,20 @@ export interface Appearance {
 export interface Shortcuts {
   openClipboard: string;
   openPreference: string;
+  snip: string;
   winV: boolean;
+}
+
+export type SnipLineBreak = "keep" | "merge";
+
+export interface Snip {
+  lineBreak: SnipLineBreak;
+  autoCopy: boolean;
+  saveToHistory: boolean;
+  detectQr: boolean;
+  ocrCopiedImages: boolean;
+  /** 识别语言:"zhEn"(内置)或语言包 id(korean/latin/eslav/th/arabic)。 */
+  language: string;
 }
 
 export interface Content {
@@ -210,6 +223,7 @@ export interface Settings {
   appearance: Appearance;
   shortcuts: Shortcuts;
   clipboard: Clipboard;
+  snip: Snip;
   onboarding: Onboarding;
   update: Update;
 }

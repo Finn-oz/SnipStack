@@ -6,6 +6,7 @@ import type {
   StorageLocation,
 } from "@/commands";
 import LanguageSwitcher from "@/components/LanguageSwitcher";
+import { OCR_BUILTIN_LANGUAGE_ID } from "@/constants/ocr";
 import type { Language, Settings } from "@/types/settings";
 import type {
   PreferenceSetting,
@@ -16,6 +17,7 @@ import ActionControl from "./ActionControl";
 import CaptureOrderControl from "./CaptureOrderControl";
 import ClipboardGroupSelectControl from "./ClipboardGroupSelectControl";
 import NumberControl from "./NumberControl";
+import OcrLanguageControl from "./OcrLanguageControl";
 import PermissionControl from "./PermissionControl";
 import RetentionControl, { resolveRetentionValue } from "./RetentionControl";
 import { SegmentedSelectControl, SelectControl } from "./SelectControls";
@@ -62,6 +64,15 @@ const PreferenceSettingControl: FC<PreferenceSettingControlProps> = (props) => {
   };
 
   switch (setting.control.type) {
+    case "ocrLanguage":
+      return (
+        <OcrLanguageControl
+          disabled={disabled}
+          onChange={onChange}
+          setting={setting}
+          value={String(value ?? OCR_BUILTIN_LANGUAGE_ID)}
+        />
+      );
     case "switch":
       return (
         <SwitchControl

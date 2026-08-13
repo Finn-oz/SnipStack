@@ -28,7 +28,7 @@ use super::source::{self, FrontmostApp};
 use super::storage::ImageStore;
 use crate::db::apps::upsert_app;
 use crate::db::items::{upsert_item, UpsertResult};
-use crate::db::models::{ClipboardApp, ClipboardItem};
+use crate::db::models::{ClipboardApp, ClipboardItem, ClipboardKind};
 use crate::settings::SettingsStore;
 
 /// 剪贴板更新事件名。前端监听此事件后增量刷新 / 重新拉取列表。
@@ -141,6 +141,12 @@ pub async fn persist_and_notify(
         }
     }
     let result = upsert_item(pool, &item_to_write).await?;
+    // 图片条目交给后台 OCR 建全文索引。挂在这里(而非 watcher 回调)是因为本函数是
+    // 监听 / 手动重读 / 旧版导入等所有入库路径的汇聚点,任何路径的图片都同权被索引;
+    // 设置开关、幂等标记与 in-flight 去重都在 schedule 内部处理。
+    if item_to_write.kind == ClipboardKind::Image {
+        crate::ocr::backfill::schedule(app, result.id.clone(), item_to_write.content.clone());
+    }
     sound::maybe_play_copy(app);
     if let Err(err) = app.emit(
         CLIPBOARD_UPDATED_EVENT,
@@ -261,6 +267,11 @@ impl ClipboardHandler for ClipboardChangeHandler {
     fn on_clipboard_change(&mut self) {
         // 用户从托盘关掉「监听」时直接早退，不读取、不入库、不 emit。
         if self.pause.is_paused() {
+            return;
+        }
+
+        // 密码管理器等应用按剪贴板格式约定请求监控方忽略本次内容(仅 Windows 有此约定)。
+        if super::exclusion::should_exclude_current() {
             return;
         }
 

@@ -68,8 +68,8 @@ src-tauri/
     menu/       # 列表项右键菜单（macOS muda / Windows webview 窗）
     drag_out/   # OS 级拖出（文件/图片/文本拖到外部应用）
     backup/     # .snipstackbak 历史备份导出与接收
-    capture/    # (规划中, M1) 截屏冻结帧与每显示器框选覆盖层(仅 windows)
-    ocr/        # (规划中, M1) OCR 推理管线(PP-OCRv5 ONNX)与 QR 解码
+    capture/    # 截屏取字会话:冻结帧捕获、每显示器覆盖层、选区裁剪与结果处理
+    ocr/        # PP-OCRv5 ONNX 推理管线(oar-ocr)与换行拼接;模型在 resources/ocr/(pnpm fetch:ocr-models)
     i18n/       # Rust 侧用户可见文案（托盘、菜单、命令 toast）
     autostart/  # 开机自启
     settings/   # 设置模型与持久化

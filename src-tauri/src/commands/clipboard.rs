@@ -85,6 +85,10 @@ pub async fn read_clipboard(
     // 这里仍保留探测：若用户在外部应用复制后立刻命令式触发，多少能捕获到正确来源；
     // 命中我们自己也无害（apps 表只是多记一条「SnipStack」）。
     let (item_opt, source) = {
+        // 与 OS 监听路径同权:密码管理器按格式约定要求忽略的内容,手动重读也不入库。
+        if crate::clipboard::should_exclude_current() {
+            return Ok(None);
+        }
         let source = detect_frontmost();
         let reader = ClipboardReader::new()?;
         let settings = app.state::<SettingsStore>().snapshot();

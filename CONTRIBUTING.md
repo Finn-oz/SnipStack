@@ -8,13 +8,13 @@ expectations for code and documentation changes.
 
 ## Project Status
 
-SnipStack has entered its stable release line. Future changes should evolve the
+SnipStack is in early public release (v0.1.x). Changes should evolve the
 current app directly and include migrations or upgrade handling for released
 user data when storage, settings, or database contracts change.
 
 ## Platform Scope
 
-SnipStack supports macOS and Windows only.
+SnipStack releases target Windows 11 x64 only. The macOS code paths are kept compiling for development convenience but are not a supported release target.
 
 Linux is not supported, and new code, dependencies, builds, and documentation
 should stay focused on macOS and Windows.

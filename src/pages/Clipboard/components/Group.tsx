@@ -197,9 +197,16 @@ const Group: FC = () => {
 
   /**
    * 切换范围；范围必须始终保留一个选中项。
+   * 点击「全部」兼任重置语义：同时清除分类与自定义分组筛选。范围与分类是两个
+   * 独立维度，range 已是 all 时点「全部」原本无事发生，用户预期却是回到全量列表。
    */
   const selectRange = (value: ClipboardRange) => {
     clipboardViewState.range = value;
+
+    if (value === "all") {
+      clipboardViewState.category = null;
+      clipboardViewState.groupId = null;
+    }
   };
 
   /**

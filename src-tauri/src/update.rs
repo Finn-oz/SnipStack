@@ -15,11 +15,11 @@ const BETA_ENDPOINT_ENV: &str = "SNIPSTACK_UPDATE_BETA_ENDPOINT";
 const NIGHTLY_ENDPOINT_ENV: &str = "SNIPSTACK_UPDATE_NIGHTLY_ENDPOINT";
 // 尚未搭建更新服务;先指向 GitHub Releases 的 latest.json 约定路径,发布前手动检查只会优雅失败。
 const DEFAULT_STABLE_ENDPOINT: &str =
-    "https://github.com/snipstack/SnipStack/releases/latest/download/latest.json";
+    "https://github.com/Finn-oz/SnipStack/releases/latest/download/latest.json";
 const DEFAULT_BETA_ENDPOINT: &str =
-    "https://github.com/snipstack/SnipStack/releases/latest/download/latest.json";
+    "https://github.com/Finn-oz/SnipStack/releases/latest/download/latest.json";
 const DEFAULT_NIGHTLY_ENDPOINT: &str =
-    "https://github.com/snipstack/SnipStack/releases/latest/download/latest.json";
+    "https://github.com/Finn-oz/SnipStack/releases/latest/download/latest.json";
 const AUTO_CHECK_INITIAL_DELAY_SECONDS: u64 = 8;
 const AUTO_CHECK_SETTINGS_REFRESH_SECONDS: u64 = 60 * 60;
 const AUTO_CHECK_FAILURE_RETRY_SECONDS: u64 = 60 * 60;

@@ -1,0 +1,6 @@
+# Windows:静态链接 MSVC C 运行时(/MT),避免用户机器缺 MSVCP140.dll /
+# VCRUNTIME140_1.dll(全新 Windows 不自带 VC++ Redistributable)。
+# 若 ort 预编译静态库与 crt-static 冲突导致链接失败,回退方案是把
+# vc_redist 三件套 DLL 放进 bundle resources 随应用分发。
+[target.x86_64-pc-windows-msvc]
+rustflags = ["-C", "target-feature=+crt-static"]

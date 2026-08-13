@@ -1,0 +1,76 @@
+//! 被动图片 OCR:入库的图片在后台识别,文本写入 `search_text` 进入 FTS 索引。
+//!
+//! 幂等约定(见 [`crate::db::items::fill_item_search_text`]):`search_text` 为 NULL
+//! 表示「未处理」;识别后无论有无文字都写入(无文字写空串)作已处理标记,同一图片
+//! 不会被重复识别。截屏取字条目在入库时已带该标记。另有进程内 in-flight 去重,
+//! 同一条目并发调度只跑一次。识别串行(引擎内部 Mutex),单任务失败只记日志,
+//! 不影响剪贴板主链路。
+
+use anyhow::Context;
+use tauri::{AppHandle, Emitter, Manager};
+
+use crate::clipboard::{ImageStore, CLIPBOARD_UPDATED_EVENT};
+use crate::core::in_flight::InFlight;
+use crate::core::{AppError, Result};
+use crate::db::items::{fill_item_search_text, get_item_search_text};
+use crate::settings::{SettingsStore, SnipLineBreak};
+
+/// 正在识别中的条目 id;防止同图连续复制(去重命中同一行)触发重复识别。
+static IN_FLIGHT: InFlight = InFlight::new();
+
+/// 调度一次图片条目的后台 OCR。设置未开启、条目已处理或已在识别中时为空操作。
+pub fn schedule(app: &AppHandle, item_id: String, image_file: String) {
+    let enabled = app
+        .try_state::<SettingsStore>()
+        .map(|store| store.snapshot().snip.ocr_copied_images)
+        .unwrap_or(false);
+    if !enabled {
+        return;
+    }
+    let Some(guard) = IN_FLIGHT.try_begin(&item_id) else {
+        return;
+    };
+
+    let app = app.clone();
+    tauri::async_runtime::spawn(async move {
+        let _guard = guard;
+        if let Err(err) = backfill_one(&app, &item_id, &image_file).await {
+            log::warn!("image ocr backfill for {item_id} failed: {err}");
+        }
+    });
+}
+
+async fn backfill_one(app: &AppHandle, item_id: &str, image_file: &str) -> Result<()> {
+    let pool = app.state::<crate::db::DatabaseState>().pool().await;
+
+    // 非 NULL(含空串标记)即已处理:截屏取字写入、先前识别过、或用户手动编辑过。
+    match get_item_search_text(&pool, item_id).await? {
+        None | Some(Some(_)) => return Ok(()),
+        Some(None) => {}
+    }
+
+    let path = app.state::<ImageStore>().origin_path(image_file);
+    let ocr_app = app.clone();
+    let text = tauri::async_runtime::spawn_blocking(move || {
+        let image = image::open(&path)
+            .map_err(|err| AppError::Ocr(format!("读取历史图片失败: {err}")))?
+            .into_rgba8();
+        let lines = super::recognize(&ocr_app, &image)?;
+        // 搜索索引场景不关心排版,固定按行保留,便于搜索命中后展示上下文。
+        Ok::<_, AppError>(super::join_lines(&lines, SnipLineBreak::Keep))
+    })
+    .await
+    .context("image ocr task")??;
+
+    if fill_item_search_text(&pool, item_id, &text).await? && !text.is_empty() {
+        log::info!(
+            "image ocr backfill: {item_id} indexed {} chars",
+            text.chars().count()
+        );
+        let _ = app.emit(
+            CLIPBOARD_UPDATED_EVENT,
+            serde_json::json!({ "id": item_id, "kind": "image" }),
+        );
+    }
+    Ok(())
+}

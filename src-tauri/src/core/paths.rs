@@ -94,6 +94,16 @@ pub fn default_data_dir(app: &AppHandle) -> Result<PathBuf> {
     bootstrap_dir(app)
 }
 
+/// OCR 语言包缓存根:`<app_local_data>/ocr-packs`。属应用级缓存,刻意不挂 env、
+/// 不随自定义数据目录迁移、不进备份——删除后可随时重新下载。
+pub fn ocr_packs_dir(app: &AppHandle) -> Result<PathBuf> {
+    let dir = app
+        .path()
+        .app_local_data_dir()
+        .context("failed to resolve app local data dir")?;
+    Ok(dir.join("ocr-packs"))
+}
+
 /// 用户选择父目录后创建 SnipStack 自有数据子目录。
 pub fn custom_data_dir(parent: &Path) -> PathBuf {
     parent.join(CUSTOM_DATA_DIR_NAME).join(env_dir())

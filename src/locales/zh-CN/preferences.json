@@ -126,6 +126,9 @@
       "sensitive": {
         "title": "隐私保护"
       },
+      "snip": {
+        "title": "截屏取字"
+      },
       "source": {
         "title": "应用过滤"
       },
@@ -530,9 +533,44 @@
           "placeholder": "Alt+X",
           "title": "打开偏好设置窗口"
         },
+        "snip": {
+          "description": "框选屏幕区域,离线识别其中的文字。",
+          "placeholder": "Alt+S",
+          "title": "截屏取字"
+        },
         "winV": {
           "description": "按 Win+V 唤起 SnipStack，替代 Windows 系统剪贴板历史面板。",
           "title": "接管 Win+V"
+        }
+      },
+      "snip": {
+        "autoCopy": {
+          "description": "识别完成后自动把文本写入剪贴板。",
+          "title": "自动复制"
+        },
+        "detectQr": {
+          "description": "框选区域内发现二维码/条码时直接取码值,不再走文字识别。",
+          "title": "识别二维码/条码"
+        },
+        "language": {
+          "description": "选择识别语言;内置之外的语言需先下载语言包(模型 + 字典,约 8-13 MB)。",
+          "title": "识别语言"
+        },
+        "lineBreak": {
+          "description": "识别结果保留原始换行,或合并为一段(中文续行不加空格)。",
+          "options": {
+            "keep": "保留换行",
+            "merge": "合并为一段"
+          },
+          "title": "换行处理"
+        },
+        "ocrCopiedImages": {
+          "description": "后台识别复制进历史的图片,识别文本进入全文搜索——凭文字找回任何截图。",
+          "title": "索引复制的图片"
+        },
+        "saveToHistory": {
+          "description": "截图与识别文本一并存入历史,可按文字搜索到这张截图。",
+          "title": "存入历史"
         }
       },
       "source": {
@@ -646,6 +684,9 @@
       "shortcuts": {
         "title": "快捷键"
       },
+      "snip": {
+        "title": "截屏取字"
+      },
       "workflow": {
         "title": "界面"
       }
@@ -654,6 +695,20 @@
   "search": {
     "empty": "没有找到相关设置",
     "placeholder": "搜索配置项"
+  },
+  "snipLanguage": {
+    "builtin": "中文 / 英文(内置)",
+    "builtinNote": "同时覆盖繁体中文与日文",
+    "delete": "删除",
+    "download": "下载",
+    "packs": {
+      "arabic": "阿拉伯文",
+      "eslav": "俄语(东斯拉夫)",
+      "korean": "韩文",
+      "latin": "拉丁字母语言(法/德/西等)",
+      "th": "泰文"
+    },
+    "scopeNote": "语言包只识别对应文字系统和基本英文字母,不含中文;需要识别中文时请切回内置。"
   },
   "status": {
     "alwaysOn": "默认能力",

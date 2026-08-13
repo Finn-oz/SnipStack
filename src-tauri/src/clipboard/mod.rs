@@ -2,6 +2,7 @@ mod app_store;
 mod apps_registry;
 mod cleanup;
 mod detect;
+mod exclusion;
 mod file_icon_store;
 mod guard;
 mod icon;
@@ -20,19 +21,23 @@ pub use apps_registry::{
     add_app_from_path, delete_unreferenced_apps, refresh_running_apps, AppsRegistry,
 };
 pub use detect::sanitize_css_color;
+pub use exclusion::should_exclude_current;
 pub use file_icon_store::FileIconStore;
 pub use guard::WritebackGuard;
 pub use icon::{get_icon_cache_key, icon_png, DIR_CACHE_KEY};
 #[cfg(test)]
 pub use ingest::build_item;
 pub use ingest::build_item_with_settings;
+pub(crate) use ingest::plain_text_item;
 pub use payload::{ClipboardPayload, ImagePayload, TextPayload};
 pub use read::ClipboardReader;
 pub use sound::play_copy_sound;
 pub use source::detect_frontmost;
 pub use storage::ImageStore;
-pub use watcher::{init, materialize_source, persist_and_notify, WatcherPause};
-pub use write::write_to_clipboard;
+pub use watcher::{
+    init, materialize_source, persist_and_notify, WatcherPause, CLIPBOARD_UPDATED_EVENT,
+};
+pub use write::{write_plain_text, write_to_clipboard};
 
 #[cfg(test)]
 pub(crate) mod test_lock {

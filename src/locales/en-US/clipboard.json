@@ -102,6 +102,10 @@
     "switchCustomGroup": "Switch custom group",
     "toggleRange": "Toggle all / favorites"
   },
+  "snip": {
+    "done": "Snip done, {{count}} characters recognized",
+    "failed": "Snip failed: {{message}}"
+  },
   "types": {
     "color": "Color",
     "email": "Email",

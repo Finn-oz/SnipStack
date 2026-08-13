@@ -657,63 +657,102 @@ export const preferenceTabs: PreferenceTab[] = [
           },
         ],
       },
-      ...(isMac || isWin
+      // v0.1.0:Windows「以管理员运行」入口整体隐藏——提权链路存在三个已知缺陷
+      // (提权重启后引导窗口丢失、autostart 同步 0x80070005、跨权限单实例失效),
+      // 修复后再恢复 runAsAdministrator 设置项;后端能力保留不动。
+      ...(isMac
         ? [
             {
               id: "permissions",
               settings: [
-                ...(isMac
-                  ? [
-                      {
-                        control: {
-                          kind: "accessibility",
-                          type: "permission",
-                        } as const,
-                        id: "permissions.accessibility",
-                        keywords: [
-                          "accessibility",
-                          "permission",
-                          "paste",
-                          "macos",
-                        ],
-                      },
-                      {
-                        control: {
-                          kind: "fullDiskAccess",
-                          type: "permission",
-                        } as const,
-                        id: "permissions.fullDiskAccess",
-                        keywords: [
-                          "full disk",
-                          "permission",
-                          "privacy",
-                          "macos",
-                        ],
-                      },
-                    ]
-                  : []),
-                ...(isWin
-                  ? [
-                      {
-                        control: {
-                          kind: "runAsAdministrator",
-                          type: "permission",
-                        } as const,
-                        id: "permissions.runAsAdministrator",
-                        keywords: [
-                          "administrator",
-                          "admin",
-                          "permission",
-                          "windows",
-                          "uac",
-                        ],
-                      },
-                    ]
-                  : []),
+                {
+                  control: {
+                    kind: "accessibility",
+                    type: "permission",
+                  } as const,
+                  id: "permissions.accessibility",
+                  keywords: ["accessibility", "permission", "paste", "macos"],
+                },
+                {
+                  control: {
+                    kind: "fullDiskAccess",
+                    type: "permission",
+                  } as const,
+                  id: "permissions.fullDiskAccess",
+                  keywords: ["full disk", "permission", "privacy", "macos"],
+                },
               ],
             },
           ]
         : []),
+    ],
+  },
+  {
+    icon: "i-lucide:scan-text",
+    id: "snip",
+    sections: [
+      {
+        id: "snip",
+        settings: [
+          {
+            control: {
+              options: [{ value: "keep" }, { value: "merge" }],
+              type: "segmented",
+            },
+            id: "snip.lineBreak",
+            keywords: ["snip", "ocr", "line break", "newline"],
+            path: ["snip", "lineBreak"],
+            value: (settings) => {
+              return settings.snip.lineBreak;
+            },
+          },
+          {
+            control: { type: "switch" },
+            id: "snip.autoCopy",
+            keywords: ["snip", "ocr", "copy", "clipboard"],
+            path: ["snip", "autoCopy"],
+            value: (settings) => {
+              return settings.snip.autoCopy;
+            },
+          },
+          {
+            control: { type: "switch" },
+            id: "snip.saveToHistory",
+            keywords: ["snip", "ocr", "history", "search"],
+            path: ["snip", "saveToHistory"],
+            value: (settings) => {
+              return settings.snip.saveToHistory;
+            },
+          },
+          {
+            control: { type: "switch" },
+            id: "snip.detectQr",
+            keywords: ["snip", "qr", "barcode", "code"],
+            path: ["snip", "detectQr"],
+            value: (settings) => {
+              return settings.snip.detectQr;
+            },
+          },
+          {
+            control: { type: "switch" },
+            id: "snip.ocrCopiedImages",
+            keywords: ["snip", "ocr", "image", "index", "search"],
+            path: ["snip", "ocrCopiedImages"],
+            value: (settings) => {
+              return settings.snip.ocrCopiedImages;
+            },
+          },
+          {
+            control: { type: "ocrLanguage" },
+            id: "snip.language",
+            keywords: ["snip", "ocr", "language", "pack", "korean", "latin"],
+            path: ["snip", "language"],
+            value: (settings) => {
+              return settings.snip.language;
+            },
+          },
+        ],
+      },
     ],
   },
   {
@@ -739,6 +778,15 @@ export const preferenceTabs: PreferenceTab[] = [
             path: ["shortcuts", "openPreference"],
             value: (settings) => {
               return settings.shortcuts.openPreference;
+            },
+          },
+          {
+            control: { type: "shortcutRecorder" },
+            id: "shortcuts.snip",
+            keywords: ["shortcut", "hotkey", "snip", "ocr", "screenshot"],
+            path: ["shortcuts", "snip"],
+            value: (settings) => {
+              return settings.shortcuts.snip;
             },
           },
           ...(isWin

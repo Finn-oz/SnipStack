@@ -25,10 +25,21 @@ pub enum CommandKey {
     DragImageMissing,
     DragTextEmpty,
     ExternalUrlUnsupported,
+    OcrModelMissing,
+    OcrEngineBuildFailed,
+    OcrRecognizeFailed,
+    OcrPackUnknown,
+    OcrPackRequestFailed,
+    OcrPackHttpError,
+    OcrPackDownloadInterrupted,
+    OcrPackDownloadFailed,
+    OcrPackSizeMismatch,
+    OcrPackHashMismatch,
 }
 
 #[derive(Debug, Clone, Copy)]
 pub enum TrayKey {
+    Snip,
     Preference,
     StartListening,
     StopListening,

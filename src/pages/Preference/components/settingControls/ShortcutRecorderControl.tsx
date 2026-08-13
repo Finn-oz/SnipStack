@@ -62,12 +62,18 @@ function resolveGlobalShortcutConflicts(
     label: translateShortcutSettingTitle(t, "shortcuts.openPreference"),
     value: settings.shortcuts.openPreference,
   };
+  const snipConflict = {
+    label: translateShortcutSettingTitle(t, "shortcuts.snip"),
+    value: settings.shortcuts.snip,
+  };
 
   switch (setting.id) {
     case "shortcuts.openClipboard":
-      return [openPreferenceConflict];
+      return [openPreferenceConflict, snipConflict];
     case "shortcuts.openPreference":
-      return [openClipboardConflict];
+      return [openClipboardConflict, snipConflict];
+    case "shortcuts.snip":
+      return [openClipboardConflict, openPreferenceConflict];
     default:
       return [] satisfies ShortcutRecorderConflict[];
   }

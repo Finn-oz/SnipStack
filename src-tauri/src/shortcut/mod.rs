@@ -127,18 +127,35 @@ pub fn apply(app: &AppHandle, shortcuts: &Shortcuts) -> Result<()> {
         return Ok(());
     }
 
-    let desired: [(&'static str, &str); 2] = [
+    let desired: [(&'static str, &str); 3] = [
         ("open_clipboard", &shortcuts.open_clipboard),
         ("open_preference", &shortcuts.open_preference),
+        ("snip", &shortcuts.snip),
     ];
 
     #[cfg(target_os = "windows")]
     win_v::set_enabled(app, shortcuts.win_v);
 
-    let mut active = Vec::new();
+    let mut active: Vec<(&'static str, Shortcut)> = Vec::new();
     for (action, binding) in desired {
         if binding.trim().is_empty() {
             continue;
+        }
+        // 同一组合键绑到多个动作时,后者跳过并提示,而不是静默抢占前者
+        // (旧配置升级注入新默认值时可能撞上用户既有的自定义绑定)。
+        if let Ok(shortcut) = binding.parse::<Shortcut>() {
+            if active.iter().any(|(_, existing)| *existing == shortcut) {
+                log::warn!("shortcut {action}={binding} duplicates an earlier action, skipped");
+                let _ = app.emit(
+                    CONFLICT_EVENT,
+                    ShortcutConflict {
+                        action,
+                        binding: binding.into(),
+                        reason: "duplicate binding".into(),
+                    },
+                );
+                continue;
+            }
         }
         match register_one(app, action, binding) {
             Ok(shortcut) => active.push((action, shortcut)),
@@ -246,12 +263,23 @@ fn handle_event(app: &AppHandle, action: &'static str, event: ShortcutEvent) {
     if !matches!(event.state(), ShortcutState::Pressed) {
         return;
     }
-    let label = match action {
-        "open_clipboard" => CLIPBOARD_WINDOW_LABEL,
-        "open_preference" => PREFERENCE_WINDOW_LABEL,
-        _ => return,
-    };
-    if let Err(err) = window::toggle_window(app, label) {
-        log::warn!("toggle window via shortcut {action} failed: {err}");
+    // 单一分发点:action → 行为;新动作在此加分支,勿再引入平行的 if 链。
+    match action {
+        "snip" => {
+            if let Err(err) = crate::capture::start_snip(app) {
+                log::warn!("start snip via shortcut failed: {err}");
+            }
+        }
+        "open_clipboard" | "open_preference" => {
+            let label = if action == "open_clipboard" {
+                CLIPBOARD_WINDOW_LABEL
+            } else {
+                PREFERENCE_WINDOW_LABEL
+            };
+            if let Err(err) = window::toggle_window(app, label) {
+                log::warn!("toggle window via shortcut {action} failed: {err}");
+            }
+        }
+        _ => {}
     }
 }

@@ -235,6 +235,31 @@ pub async fn update_item_note(pool: &SqlitePool, id: &str, note: Option<&str>) -
     Ok(())
 }
 
+/// 读取条目的搜索文本。外层 `None` = 条目不存在;内层 `None` = 尚未处理(NULL)。
+/// 搜索文本契约:NULL = 未做图片 OCR;空串 = 已处理但无文字(防重复识别的标记)。
+pub async fn get_item_search_text(pool: &SqlitePool, id: &str) -> Result<Option<Option<String>>> {
+    let value = sqlx::query_scalar("SELECT search_text FROM clipboard_items WHERE id = ?")
+        .bind(id)
+        .fetch_optional(pool)
+        .await
+        .context("failed to query clipboard item search text")?;
+    Ok(value)
+}
+
+/// 只补空:仅当 `search_text` 仍为 NULL(未处理)时写入,返回是否写入。
+/// 空串是合法输入(「已处理但无文字」标记)。UPDATE 触发 FTS 触发器重建索引。
+pub async fn fill_item_search_text(pool: &SqlitePool, id: &str, text: &str) -> Result<bool> {
+    let result = sqlx::query(
+        "UPDATE clipboard_items SET search_text = ? WHERE id = ? AND search_text IS NULL",
+    )
+    .bind(text)
+    .bind(id)
+    .execute(pool)
+    .await
+    .context("failed to fill clipboard item search text")?;
+    Ok(result.rows_affected() > 0)
+}
+
 /// 更新条目所属分组；不刷新 `updated_at`，避免污染最近使用排序。
 pub async fn update_item_group(pool: &SqlitePool, id: &str, group_id: Option<&str>) -> Result<()> {
     sqlx::query("UPDATE clipboard_items SET group_id = ? WHERE id = ?")
@@ -606,6 +631,27 @@ mod tests {
 
     fn ids(items: &[ClipboardItem]) -> Vec<&str> {
         items.iter().map(|item| item.id.as_str()).collect()
+    }
+
+    #[tokio::test]
+    async fn fill_search_text_only_writes_null_rows() {
+        let pool = memory_pool().await;
+        insert_item(&pool, &sample_item("a")).await.unwrap();
+
+        // NULL → 填入(空串作「已处理无文字」标记同样成立)。
+        assert!(fill_item_search_text(&pool, "a", "识别文本").await.unwrap());
+        // 已处理 → 不再覆盖。
+        assert!(!fill_item_search_text(&pool, "a", "后来的文本")
+            .await
+            .unwrap());
+        assert_eq!(
+            get_item_search_text(&pool, "a").await.unwrap(),
+            Some(Some("识别文本".to_owned()))
+        );
+
+        // 不存在的条目:读到外层 None,fill 无行受影响。
+        assert_eq!(get_item_search_text(&pool, "missing").await.unwrap(), None);
+        assert!(!fill_item_search_text(&pool, "missing", "x").await.unwrap());
     }
 
     #[tokio::test]
