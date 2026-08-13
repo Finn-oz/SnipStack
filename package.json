@@ -2,7 +2,7 @@
   "name": "snipstack",
   "private": true,
   "version": "0.1.0",
-  "description": "A local-first clipboard manager for macOS and Windows.",
+  "description": "Snip-to-text screen OCR + searchable clipboard history for Windows 11.",
   "author": "SnipStack Contributors",
   "license": "Apache-2.0",
   "homepage": "https://github.com/Finn-oz/SnipStack#readme",
