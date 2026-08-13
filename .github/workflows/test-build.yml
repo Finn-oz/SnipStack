@@ -1,0 +1,57 @@
+name: Test Build
+
+# 手动触发的测试构建:只产出 NSIS 安装包工件,不发 Release、不需要任何 secrets。
+# 用法:GitHub 仓库页 → Actions → Test Build → Run workflow,完成后在运行页下载 artifact。
+"on":
+  workflow_dispatch:
+
+jobs:
+  build-windows:
+    name: Build Windows x64 (test)
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@1.96.0
+        with:
+          targets: x86_64-pc-windows-msvc
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Generate Tauri icons
+        run: pnpm build:icon
+        env:
+          PLATFORM: windows-latest
+
+      - name: Fetch OCR models
+        run: pnpm fetch:ocr-models
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - name: Build NSIS installer
+        run: pnpm tauri build --target x86_64-pc-windows-msvc
+        env:
+          CI: false
+
+      - name: Upload installer artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: snipstack-windows-x64-setup
+          path: src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/*-setup.exe
+          if-no-files-found: error
+          retention-days: 14
