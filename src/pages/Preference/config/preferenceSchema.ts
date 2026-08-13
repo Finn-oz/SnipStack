@@ -657,59 +657,30 @@ export const preferenceTabs: PreferenceTab[] = [
           },
         ],
       },
-      ...(isMac || isWin
+      // v0.1.0:Windows「以管理员运行」入口整体隐藏——提权链路存在三个已知缺陷
+      // (提权重启后引导窗口丢失、autostart 同步 0x80070005、跨权限单实例失效),
+      // 修复后再恢复 runAsAdministrator 设置项;后端能力保留不动。
+      ...(isMac
         ? [
             {
               id: "permissions",
               settings: [
-                ...(isMac
-                  ? [
-                      {
-                        control: {
-                          kind: "accessibility",
-                          type: "permission",
-                        } as const,
-                        id: "permissions.accessibility",
-                        keywords: [
-                          "accessibility",
-                          "permission",
-                          "paste",
-                          "macos",
-                        ],
-                      },
-                      {
-                        control: {
-                          kind: "fullDiskAccess",
-                          type: "permission",
-                        } as const,
-                        id: "permissions.fullDiskAccess",
-                        keywords: [
-                          "full disk",
-                          "permission",
-                          "privacy",
-                          "macos",
-                        ],
-                      },
-                    ]
-                  : []),
-                ...(isWin
-                  ? [
-                      {
-                        control: {
-                          kind: "runAsAdministrator",
-                          type: "permission",
-                        } as const,
-                        id: "permissions.runAsAdministrator",
-                        keywords: [
-                          "administrator",
-                          "admin",
-                          "permission",
-                          "windows",
-                          "uac",
-                        ],
-                      },
-                    ]
-                  : []),
+                {
+                  control: {
+                    kind: "accessibility",
+                    type: "permission",
+                  } as const,
+                  id: "permissions.accessibility",
+                  keywords: ["accessibility", "permission", "paste", "macos"],
+                },
+                {
+                  control: {
+                    kind: "fullDiskAccess",
+                    type: "permission",
+                  } as const,
+                  id: "permissions.fullDiskAccess",
+                  keywords: ["full disk", "permission", "privacy", "macos"],
+                },
               ],
             },
           ]

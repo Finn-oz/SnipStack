@@ -1,3 +1,4 @@
+import { findPreferenceSectionSettings } from "@/pages/Preference/config/preferenceSchema";
 import DoneStep from "./components/DoneStep";
 import IgnoreAppsStep from "./components/IgnoreAppsStep";
 import LegacyImportStep from "./components/LegacyImportStep";
@@ -12,11 +13,17 @@ export const ONBOARDING_STEPS: OnboardingStepDefinition[] = [
     icon: "i-lucide:sparkles",
     id: "welcome",
   },
-  {
-    component: PermissionsStep,
-    icon: "i-lucide:shield-check",
-    id: "permissions",
-  },
+  // 权限步骤跟随 schema:当前平台没有任何权限设置项时整步跳过
+  // (Windows 在 v0.1.0 隐藏了管理员选项后即属此情形)。
+  ...(findPreferenceSectionSettings("permissions").length > 0
+    ? [
+        {
+          component: PermissionsStep,
+          icon: "i-lucide:shield-check",
+          id: "permissions",
+        } satisfies OnboardingStepDefinition,
+      ]
+    : []),
   {
     component: ShortcutsStep,
     icon: "i-lucide:keyboard",
