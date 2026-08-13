@@ -6,7 +6,9 @@
       "assetProtocol": {
         "enable": true,
         "scope": {
-          "allow": ["**/*"],
+          "allow": [
+            "**/*"
+          ],
           "requireLiteralLeadingDot": false
         }
       },
@@ -46,10 +48,14 @@
       {
         "description": "SnipStack history backup",
         "exportedType": {
-          "conformsTo": ["public.data"],
+          "conformsTo": [
+            "public.data"
+          ],
           "identifier": "com.snipstack.app.backup"
         },
-        "ext": ["snipstackbak"],
+        "ext": [
+          "snipstackbak"
+        ],
         "mimeType": "application/vnd.snipstack.backup",
         "name": "SnipStack Backup",
         "role": "Editor"
@@ -64,9 +70,19 @@
     ],
     "license": "Apache-2.0",
     "licenseFile": "../LICENSE",
-    "resources": ["assets/tray.ico", "resources/ocr/"],
+    "resources": [
+      "assets/tray.ico",
+      "resources/ocr/",
+      "../LICENSE",
+      "../NOTICE",
+      "../THIRD-PARTY-NOTICES.md"
+    ],
     "shortDescription": "SnipStack",
-    "targets": ["nsis", "dmg", "app"]
+    "targets": [
+      "nsis",
+      "dmg",
+      "app"
+    ]
   },
   "identifier": "com.snipstack.app",
   "plugins": {
@@ -75,7 +91,7 @@
       "endpoints": [
         "https://github.com/Finn-oz/SnipStack/releases/latest/download/latest.json"
       ],
-      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDIwMzUzRkJCQUI3NjY4RgpSV1NQWnJlNisxTURBbFE2WWJpUlBJR0x0OXJOclVuUGlVYVhoNjJPZitYN0Q4V05GeW1aU2w0Zwo=",
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDExRkU0OUY4NkY2QTU0RDIKUldUU1ZHcHYrRW4rRVM0bWhHV3QwZE1SZlBXZlV0UlFpMCsxZzY0b1ovVGJ1a2t2OWdjODh3YmsK",
       "windows": {
         "installMode": "passive"
       }
