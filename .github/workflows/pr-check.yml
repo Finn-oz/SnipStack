@@ -28,28 +28,53 @@ jobs:
         run: |
           frontend=false
           backend=false
-          base_sha="${{ github.event.pull_request.base.sha }}"
 
-          while IFS= read -r file; do
-            case "$file" in
-              src/*|public/*|scripts/*)
-                frontend=true
-                ;;
-            esac
+          case "${{ github.event_name }}" in
+            pull_request)
+              base_sha="${{ github.event.pull_request.base.sha }}"
+              ;;
+            push)
+              base_sha="${{ github.event.before }}"
+              ;;
+            *)
+              base_sha=""
+              ;;
+          esac
 
-            case "$file" in
-              */*) ;;
-              *.cjs|*.html|*.json|*.jsonc|*.ts|*.mts|*.cts|pnpm-lock.yaml|pnpm-workspace.yaml)
-                frontend=true
-                ;;
-            esac
+          # 首次推送/force-push 时 before 为全零 SHA 或指向已不可达的提交
+          if [ "$base_sha" = "0000000000000000000000000000000000000000" ]; then
+            base_sha=""
+          fi
+          if [ -n "$base_sha" ] && ! git rev-parse --quiet --verify "$base_sha^{commit}" > /dev/null; then
+            base_sha=""
+          fi
 
-            case "$file" in
-              src-tauri/*|rust-toolchain.toml|package.json|pnpm-lock.yaml|pnpm-workspace.yaml|.release-it.ts|scripts/buildIcon.ts)
-                backend=true
-                ;;
-            esac
-          done < <(git diff --name-only "$base_sha" HEAD)
+          if [ -z "$base_sha" ]; then
+            # 拿不到可靠基准(workflow_dispatch、首次推送、force-push)时视为全变更
+            frontend=true
+            backend=true
+          else
+            while IFS= read -r file; do
+              case "$file" in
+                src/*|public/*|scripts/*)
+                  frontend=true
+                  ;;
+              esac
+
+              case "$file" in
+                */*) ;;
+                *.cjs|*.html|*.json|*.jsonc|*.ts|*.mts|*.cts|pnpm-lock.yaml|pnpm-workspace.yaml)
+                  frontend=true
+                  ;;
+              esac
+
+              case "$file" in
+                src-tauri/*|rust-toolchain.toml|package.json|pnpm-lock.yaml|pnpm-workspace.yaml|.release-it.ts|scripts/buildIcon.ts)
+                  backend=true
+                  ;;
+              esac
+            done < <(git diff --name-only "$base_sha" HEAD)
+          fi
 
           {
             echo "frontend=$frontend"
