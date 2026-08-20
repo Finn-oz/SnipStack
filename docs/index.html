@@ -2,12 +2,12 @@
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta content="width=device-width, initial-scale=1.0" name="viewport" >
 <title>SnipStack — 框选屏幕任意文字</title>
-<meta name="description" content="SnipStack:Windows 11 截屏取字 + 剪贴板历史工具。免费开源。">
-<link rel="icon" type="image/png" href="icon.png?v=1">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<meta content="SnipStack:Windows 11 截屏取字 + 剪贴板历史工具。免费开源。" name="description" >
+<link href="icon.png?v=1" rel="icon" type="image/png" >
+<link href="https://fonts.googleapis.com" rel="preconnect" >
+<link crossorigin href="https://fonts.gstatic.com" rel="preconnect" >
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,700&family=Noto+Serif+SC:wght@400;600&family=Noto+Sans+SC:wght@400;500&display=swap" rel="stylesheet">
 <style>
   :root {
@@ -25,26 +25,26 @@
     --sans-zh: "Noto Sans SC", "PingFang SC", sans-serif;
     --display: "Fraunces", Georgia, serif;
   }
-  * { margin: 0; padding: 0; box-sizing: border-box; }
+  * { box-sizing: border-box; padding: 0; margin: 0; }
   html { scroll-behavior: smooth; }
   body {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    min-height: 100vh;
+    padding: clamp(24px, 5vw, 64px) 20px 48px;
+    overflow-x: hidden;
+    font-family: var(--sans-zh);
+    color: var(--paper);
     background:
       radial-gradient(1200px 700px at 75% -10%, var(--night-2) 0%, transparent 60%),
       radial-gradient(900px 600px at -10% 100%, #241e52 0%, transparent 55%),
       var(--night-0);
-    color: var(--paper);
-    font-family: var(--sans-zh);
-    min-height: 100vh;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    padding: clamp(24px, 5vw, 64px) 20px 48px;
-    overflow-x: hidden;
   }
   /* 星点 */
   body::before {
+    position: fixed; inset: 0; pointer-events: none; 
     content: "";
-    position: fixed; inset: 0; pointer-events: none; opacity: .5;
     background-image:
       radial-gradient(1.2px 1.2px at 12% 22%, #fff9 0 50%, transparent 51%),
       radial-gradient(1px 1px at 78% 12%, #fff7 0 50%, transparent 51%),
@@ -52,9 +52,9 @@
       radial-gradient(1px 1px at 32% 8%, #fff8 0 50%, transparent 51%),
       radial-gradient(1.1px 1.1px at 58% 30%, #fff5 0 50%, transparent 51%),
       radial-gradient(1px 1px at 8% 62%, #fff5 0 50%, transparent 51%),
-      radial-gradient(1.3px 1.3px at 94% 78%, #fff6 0 50%, transparent 51%);
+      radial-gradient(1.3px 1.3px at 94% 78%, #fff6 0 50%, transparent 51%);opacity: .5;
   }
-  .wrap { width: min(660px, 100%); display: flex; flex-direction: column; align-items: center; }
+  .wrap { display: flex; flex-direction: column; align-items: center; width: min(660px, 100%); }
 
   .app-icon {
     width: 96px; height: 96px; border-radius: 22px;
@@ -62,40 +62,40 @@
     animation: rise .8s cubic-bezier(.2,.7,.2,1) both;
   }
   h1 {
-    font-family: var(--display);
-    font-weight: 700;
-    font-size: clamp(38px, 8vw, 52px);
-    letter-spacing: -0.02em;
     margin-top: 22px;
+    font-family: var(--display);
+    font-size: clamp(38px, 8vw, 52px);
+    font-weight: 700;
+    letter-spacing: -0.02em;
     animation: rise .8s .08s cubic-bezier(.2,.7,.2,1) both;
   }
   .tagline {
-    font-family: var(--serif-zh);
-    color: #cdc6f2;
-    font-size: clamp(15px, 3.6vw, 18px);
-    letter-spacing: .12em;
     margin-top: 10px;
+    font-family: var(--serif-zh);
+    font-size: clamp(15px, 3.6vw, 18px);
+    color: #cdc6f2;
+    letter-spacing: .12em;
     animation: rise .8s .16s cubic-bezier(.2,.7,.2,1) both;
   }
 
   /* 信笺 */
   .letter {
-    margin-top: 44px;
-    width: 100%;
-    background: linear-gradient(178deg, var(--paper) 0%, var(--paper-dim) 100%);
-    color: var(--ink);
-    border-radius: 6px;
-    padding: clamp(28px, 6vw, 44px) clamp(24px, 6vw, 48px);
     position: relative;
+    width: 100%;
+    padding: clamp(28px, 6vw, 44px) clamp(24px, 6vw, 48px);
+    margin-top: 44px;
+    color: var(--ink);
+    background: linear-gradient(178deg, var(--paper) 0%, var(--paper-dim) 100%);
+    border-radius: 6px;
     box-shadow: 0 24px 60px #00000059, 0 2px 0 #fff2 inset;
     animation: rise .8s .24s cubic-bezier(.2,.7,.2,1) both;
   }
   .letter::before { /* 邮票 */
-    content: "❤";
     position: absolute; top: 18px; right: 20px;
-    width: 44px; height: 52px;
     display: grid; place-items: center;
-    color: #c0392b; font-size: 18px;
+    width: 44px; height: 52px;font-size: 18px;
+    color: #c0392b; 
+    content: "❤";
     background:
       radial-gradient(circle at 0 0, transparent 4px, var(--paper) 4.5px) 0 0 / 11px 11px;
     border: 1px dashed #c9c0ae;
@@ -103,68 +103,72 @@
   }
   .letter .salut { font-family: var(--serif-zh); font-size: 17px; color: var(--ink-soft); }
   .letter .body {
+    margin-top: 14px;
     font-family: var(--serif-zh);
     font-size: clamp(19px, 4.4vw, 23px);
     font-weight: 600;
     line-height: 2;
-    margin-top: 14px;
   }
   .letter .body em { font-style: normal; color: var(--violet-deep); }
   .letter .sign {
-    font-family: var(--serif-zh);
-    text-align: right; margin-top: 18px;
-    color: var(--ink-soft); font-size: 15px;
+    margin-top: 18px;
+    font-family: var(--serif-zh);font-size: 15px;
+    color: var(--ink-soft); 
+    text-align: right;
   }
 
   /* 下载 */
   .dl {
-    margin-top: 40px; width: 100%;
-    display: flex; flex-direction: column; align-items: center;
+    display: flex; flex-direction: column; align-items: center;width: 100%;
+    margin-top: 40px; 
     animation: rise .8s .32s cubic-bezier(.2,.7,.2,1) both;
   }
   .dl-btn {
-    display: inline-flex; align-items: center; gap: 12px;
-    background: linear-gradient(135deg, #7a6cff, var(--violet-deep));
-    color: #fff; text-decoration: none;
+    display: inline-flex; gap: 12px;align-items: center; 
+    padding: 18px 44px; 
     font-size: 19px; font-weight: 500;
-    padding: 18px 44px; border-radius: 999px;
+    color: #fff; text-decoration: none;
+    background: linear-gradient(135deg, #7a6cff, var(--violet-deep));border-radius: 999px;
     box-shadow: 0 10px 30px #5b4be066, 0 0 0 1px #ffffff22 inset;
     transition: transform .18s ease, box-shadow .18s ease;
   }
-  .dl-btn:hover { transform: translateY(-2px); box-shadow: 0 16px 38px #5b4be088, 0 0 0 1px #ffffff2e inset; }
+  .dl-btn:hover { box-shadow: 0 16px 38px #5b4be088, 0 0 0 1px #ffffff2e inset; transform: translateY(-2px); }
   .dl-btn svg { width: 20px; height: 20px; }
-  .dl-meta { margin-top: 12px; color: #a79ed6; font-size: 13px; letter-spacing: .04em; }
+  .dl-meta { margin-top: 12px; font-size: 13px; color: #a79ed6; letter-spacing: .04em; }
   .dl-meta a { color: #cdc6f2; }
 
   /* 步骤 */
   .steps {
-    margin-top: 44px; width: 100%;
-    display: grid; gap: 12px;
+    display: grid; gap: 12px;width: 100%;
+    margin-top: 44px; 
     animation: rise .8s .4s cubic-bezier(.2,.7,.2,1) both;
   }
   .steps h2 {
+    margin-bottom: 8px;
     font-family: var(--serif-zh); font-size: 15px; font-weight: 600;
-    color: #a79ed6; letter-spacing: .3em; text-align: center; margin-bottom: 8px;
+    color: #a79ed6; text-align: center; letter-spacing: .3em;
   }
   .step {
-    display: flex; gap: 16px; align-items: baseline;
+    display: flex; gap: 16px; align-items: baseline;padding: 16px 20px;font-size: 15px; 
+    line-height: 1.9; color: #e8e4fa;
     background: #ffffff0a; border: 1px solid #ffffff12;
-    border-radius: 12px; padding: 16px 20px;
-    line-height: 1.9; font-size: 15px; color: #e8e4fa;
+    border-radius: 12px;
   }
-  .step b { color: #fff; font-weight: 500; }
+  .step b { font-weight: 500; color: #fff; }
   .step .no {
-    font-family: var(--display); font-weight: 700; font-size: 22px;
-    color: var(--gold); flex-shrink: 0; width: 22px; text-align: center;
+    flex-shrink: 0; width: 22px; 
+    font-family: var(--display); font-size: 22px;font-weight: 700; 
+    color: var(--gold); text-align: center;
   }
   kbd {
+    padding: 1px 8px; margin: 0 2px;
     font-family: var(--display); font-size: 13px;
     background: #ffffff14; border: 1px solid #ffffff2a; border-bottom-width: 2px;
-    border-radius: 6px; padding: 1px 8px; margin: 0 2px;
+    border-radius: 6px;
   }
 
   footer {
-    margin-top: 56px; color: #7f76ad; font-size: 13px; text-align: center; line-height: 2;
+    margin-top: 56px; font-size: 13px; line-height: 2;color: #7f76ad; text-align: center; 
     animation: rise .8s .48s cubic-bezier(.2,.7,.2,1) both;
   }
   footer a { color: #a79ed6; text-decoration: none; border-bottom: 1px solid #a79ed655; }
@@ -176,7 +180,7 @@
 </head>
 <body>
 <div class="wrap">
-  <img class="app-icon" src="icon.png?v=1" alt="SnipStack 图标">
+  <img alt="SnipStack 图标" class="app-icon" src="icon.png?v=1" >
   <h1>SnipStack</h1>
   <p class="tagline">框选屏幕任意文字 · 留住复制过的一切</p>
 
@@ -189,8 +193,8 @@
   </div>
 
   <div class="dl">
-    <a class="dl-btn" id="dl" href="https://github.com/Finn-oz/SnipStack/releases/latest">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+    <a class="dl-btn" href="https://github.com/Finn-oz/SnipStack/releases/latest" id="dl" >
+      <svg aria-hidden="true" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" viewBox="0 0 24 24" ><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></svg>
       下载 SnipStack
     </a>
     <p class="dl-meta" id="meta">Windows 11 · 免费 · 无广告 · <a href="https://github.com/Finn-oz/SnipStack/releases/latest">所有版本</a></p>
