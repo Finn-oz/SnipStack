@@ -91,6 +91,17 @@ jobs:
             -ExplorerRestartEveryMinutes ([int]"${{ github.event.inputs.explorer_restart_minutes || '15' }}") `
             -CsvPath soak-samples.csv
 
+      # upload-artifact 算不出跨盘(D:\ 工作区 vs C:\ 用户目录)的公共根,先拷进工作区。
+      - name: Collect app logs
+        if: always()
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path soak-logs | Out-Null
+          $logDir = "$env:LOCALAPPDATA\com.snipstack.app\logs"
+          if (Test-Path $logDir) {
+            Copy-Item "$logDir\*" soak-logs -Recurse -Force
+          }
+
       - name: Upload soak artifacts
         if: always()
         uses: actions/upload-artifact@v4
@@ -98,6 +109,6 @@ jobs:
           name: soak-results
           path: |
             soak-samples.csv
-            ~/AppData/Local/com.snipstack.app/logs/
+            soak-logs/
           if-no-files-found: warn
           retention-days: 14
