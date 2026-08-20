@@ -19,6 +19,11 @@
     "node": ">=20",
     "pnpm": ">=10"
   },
+  "pnpm": {
+    "overrides": {
+      "undici": ">=7.29.0"
+    }
+  },
   "scripts": {
     "dev": "run-s build:icon dev:vite",
     "build": "run-s tsc build:*",
