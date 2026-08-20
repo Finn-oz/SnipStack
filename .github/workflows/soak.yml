@@ -1,0 +1,103 @@
+name: Soak Test
+
+# Windows 长时浸泡测试:构建 → 静默安装 → 持续模拟剪贴板负载 + 周期重启 explorer,
+# 采样 GDI/USER/句柄曲线并断言(详见 scripts/soak-monitor.ps1)。
+# 背景:排查「运行一段时间后托盘图标消失、二次启动无响应」。公开仓库的
+# GitHub 托管 runner 不计费,手动触发,可指定时长;需要常态化时再加 schedule。
+"on":
+  workflow_dispatch:
+    inputs:
+      duration_minutes:
+        description: "浸泡时长(分钟)"
+        default: "120"
+      explorer_restart_minutes:
+        description: "explorer 重启间隔(分钟,0 关闭)"
+        default: "15"
+
+jobs:
+  soak-windows:
+    name: Soak Windows x64
+    runs-on: windows-latest
+    timeout-minutes: 350
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@1.96.0
+        with:
+          targets: x86_64-pc-windows-msvc
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Generate Tauri icons
+        run: pnpm build:icon
+        env:
+          PLATFORM: windows-latest
+
+      - name: Fetch OCR models
+        run: pnpm fetch:ocr-models
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - name: Build NSIS installer
+        run: pnpm tauri build --target x86_64-pc-windows-msvc
+        env:
+          CI: false
+
+      - name: Install silently
+        shell: pwsh
+        run: |
+          $setup = Get-ChildItem "src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/*-setup.exe" | Select-Object -First 1
+          if (-not $setup) { throw "installer not found" }
+          Start-Process -Wait -FilePath $setup.FullName -ArgumentList "/S"
+          Start-Sleep -Seconds 5
+
+      - name: Locate installed exe
+        id: locate
+        shell: pwsh
+        run: |
+          $candidates = @(
+            "$env:LOCALAPPDATA\SnipStack",
+            "$env:LOCALAPPDATA\Programs\SnipStack",
+            "$env:ProgramFiles\SnipStack"
+          )
+          $exe = $candidates |
+            Where-Object { Test-Path $_ } |
+            ForEach-Object { Get-ChildItem $_ -Recurse -Filter SnipStack.exe -ErrorAction SilentlyContinue } |
+            Select-Object -First 1
+          if (-not $exe) { throw "installed SnipStack.exe not found in: $($candidates -join '; ')" }
+          "exe=$($exe.FullName)" >> $env:GITHUB_OUTPUT
+
+      - name: Run soak monitor
+        shell: pwsh
+        run: |
+          pwsh -File scripts/soak-monitor.ps1 `
+            -ExePath "${{ steps.locate.outputs.exe }}" `
+            -DurationMinutes ([int]"${{ github.event.inputs.duration_minutes || '120' }}") `
+            -ExplorerRestartEveryMinutes ([int]"${{ github.event.inputs.explorer_restart_minutes || '15' }}") `
+            -CsvPath soak-samples.csv
+
+      - name: Upload soak artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: soak-results
+          path: |
+            soak-samples.csv
+            ~/AppData/Local/com.snipstack.app/logs/
+          if-no-files-found: warn
+          retention-days: 14

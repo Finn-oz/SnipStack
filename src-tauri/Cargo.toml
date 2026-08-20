@@ -87,6 +87,7 @@ winapi = { version = "0.3", features = [
     "winnt",
     "minwindef",
     "windef",
+    "psapi",
 ] }
 windows-registry = "0.6"
 windows-result = "0.4"
@@ -99,6 +100,7 @@ windows = { version = "0.52", features = [
     "Win32_System_DataExchange",
     "Win32_System_SystemServices",
     "Win32_System_Threading",
+    "Win32_System_Diagnostics_Debug",
     "Win32_UI_WindowsAndMessaging",
     "Win32_UI_Shell",
 ] }

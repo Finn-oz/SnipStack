@@ -6,6 +6,7 @@ mod clipboard;
 mod commands;
 mod core;
 mod db;
+mod diagnostics;
 mod drag_out;
 mod i18n;
 #[cfg(target_os = "windows")]
@@ -25,6 +26,9 @@ use tauri::{Manager, WindowEvent};
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // 尽早装 panic hook:logger 就绪前 log 输出为 no-op,但链回的原 hook 仍打 stderr。
+    diagnostics::install_panic_hook();
+
     admin::handle_startup_auto_elevation();
 
     // Webview target 把日志回灌到前端 devtools console，只在 dev 启用；
@@ -265,6 +269,8 @@ pub fn run() {
 
             update::schedule_auto_check(&handle);
 
+            diagnostics::start_watchdog(&handle);
+
             // Windows 冷启动文件关联：第一个实例从自身启动参数里取 `.snipstackbak` 路径。
             // 已运行时双击由 `single_instance` 回调处理；此处覆盖应用未启动时双击的冷启动场景，
             // 否则路径会被丢弃——程序被唤起但偏好窗口不弹。macOS 走 `RunEvent::Opened`，不经此路。
@@ -341,6 +347,12 @@ pub fn run() {
             // 退出前保存所有窗口几何，兜住「调整大小后不关窗直接退出」的场景。
             if let tauri::RunEvent::ExitRequested { .. } = event {
                 window::save_all_window_states(app_handle);
+            }
+
+            // 干净退出的标记：日志里最后没有这行 = 进程是被杀/崩溃/断电走的，
+            // 供排查「托盘消失」类现场时区分退出方式。
+            if let tauri::RunEvent::Exit = event {
+                log::info!("app exit (clean shutdown)");
             }
         });
 }
