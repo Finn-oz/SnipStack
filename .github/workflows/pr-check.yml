@@ -150,14 +150,15 @@ jobs:
         with:
           workspaces: src-tauri
 
+      # 统一从仓库根目录跑 cargo(与 tauri-action 发布构建、pnpm tauri dev、
+      # lint-staged 钩子一致):src-tauri/.cargo/config.toml 的 crt-static 只在
+      # cwd 位于 src-tauri 内时被 cargo 发现,而它与 ort 的 /MD 预编译静态库
+      # 冲突,会让 Windows 链接失败。
       - name: Rust fmt
-        working-directory: src-tauri
-        run: cargo fmt --all --check
+        run: cargo fmt --manifest-path src-tauri/Cargo.toml --all --check
 
       - name: Rust clippy
-        working-directory: src-tauri
-        run: cargo clippy --all-targets --all-features -- -D warnings
+        run: cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets --all-features -- -D warnings
 
       - name: Rust test
-        working-directory: src-tauri
-        run: cargo test --all-targets --all-features
+        run: cargo test --manifest-path src-tauri/Cargo.toml --all-targets --all-features
