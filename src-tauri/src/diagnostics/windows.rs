@@ -17,11 +17,11 @@ use winapi::um::processthreadsapi::{
     GetCurrentProcess, GetCurrentProcessId, GetProcessHandleCount,
 };
 use winapi::um::psapi::{GetProcessMemoryInfo, PROCESS_MEMORY_COUNTERS};
-use winapi::um::winuser::{GetGuiResources, GR_GDIOBJECTS, GR_USEROBJECTS};
 use windows::Win32::Foundation::HANDLE;
 use windows::Win32::System::Diagnostics::Debug::{
     MiniDumpNormal, MiniDumpWithThreadInfo, MiniDumpWriteDump, MINIDUMP_TYPE,
 };
+use windows::Win32::System::Threading::{GetGuiResources, GR_GDIOBJECTS, GR_USEROBJECTS};
 
 /// 日志目录里最多保留的卡死 dump 数,防止反复卡死刷满磁盘。
 const MAX_HANG_DUMPS: usize = 3;
@@ -29,8 +29,9 @@ const MAX_HANG_DUMPS: usize = 3;
 pub(super) fn resource_summary() -> String {
     unsafe {
         let process = GetCurrentProcess();
-        let gdi = GetGuiResources(process, GR_GDIOBJECTS);
-        let user = GetGuiResources(process, GR_USEROBJECTS);
+        let gui_process = windows::Win32::System::Threading::GetCurrentProcess();
+        let gdi = GetGuiResources(gui_process, GR_GDIOBJECTS);
+        let user = GetGuiResources(gui_process, GR_USEROBJECTS);
 
         let mut handles: u32 = 0;
         GetProcessHandleCount(process, &mut handles);
