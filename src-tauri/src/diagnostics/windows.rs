@@ -17,21 +17,24 @@ use winapi::um::processthreadsapi::{
     GetCurrentProcess, GetCurrentProcessId, GetProcessHandleCount,
 };
 use winapi::um::psapi::{GetProcessMemoryInfo, PROCESS_MEMORY_COUNTERS};
-use winapi::um::winuser::{GetGuiResources, GR_GDIOBJECTS, GR_USEROBJECTS};
 use windows::Win32::Foundation::HANDLE;
 use windows::Win32::System::Diagnostics::Debug::{
     MiniDumpNormal, MiniDumpWithThreadInfo, MiniDumpWriteDump, MINIDUMP_TYPE,
 };
+// GetGuiResources 只有 windows crate 有(winapi 0.3 未收录),与 winapi 的
+// GetCurrentProcess 返回的 HANDLE 类型不互通,GUI 计数单独取一次进程句柄。
+use windows::Win32::System::Threading::{GetGuiResources, GR_GDIOBJECTS, GR_USEROBJECTS};
 
 /// 日志目录里最多保留的卡死 dump 数,防止反复卡死刷满磁盘。
 const MAX_HANG_DUMPS: usize = 3;
 
 pub(super) fn resource_summary() -> String {
     unsafe {
-        let process = GetCurrentProcess();
-        let gdi = GetGuiResources(process, GR_GDIOBJECTS);
-        let user = GetGuiResources(process, GR_USEROBJECTS);
+        let gui_process = windows::Win32::System::Threading::GetCurrentProcess();
+        let gdi = GetGuiResources(gui_process, GR_GDIOBJECTS);
+        let user = GetGuiResources(gui_process, GR_USEROBJECTS);
 
+        let process = GetCurrentProcess();
         let mut handles: u32 = 0;
         GetProcessHandleCount(process, &mut handles);
 
