@@ -8,6 +8,17 @@ clipboard-manager codebase, see the upstream changelog.
 
 ## [Unreleased]
 
+## [0.1.2] - 2026-08-20
+
+### Added
+
+- Runtime diagnostics for troubleshooting rare "tray icon disappears /
+  app won't reopen" reports: panics are logged with a backtrace, a
+  watchdog records main-thread unresponsiveness together with GDI/USER
+  handle counts and writes a minidump next to the logs, and a clean
+  shutdown leaves an explicit marker in the log. Everything stays in the
+  local log folder — SnipStack still sends no telemetry.
+
 ## [0.1.1] - 2026-08-14
 
 ### Added
