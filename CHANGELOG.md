@@ -8,6 +8,21 @@ clipboard-manager codebase, see the upstream changelog.
 
 ## [Unreleased]
 
+## [0.1.3] - 2026-08-21
+
+### Fixed
+
+- Window geometry is no longer written to disk on the UI thread. Saving now
+  happens on a dedicated background thread with atomic writes, so a slow
+  disk, antivirus scan, or cloud-synced profile folder can no longer stall
+  the app when a window hides — a suspected cause of the rare "tray icon
+  disappears / app won't reopen" issue. State is still flushed synchronously
+  on exit and before storage-location migration, so nothing is lost.
+- Hang watchdog refinements: OS drag-and-drop is recognized as an expected
+  pause (no false hang capture), while a genuine freeze during a drag is
+  still captured after an escalated threshold; each distinct hang episode
+  records at most one minidump.
+
 ## [0.1.2] - 2026-08-20
 
 ### Added
