@@ -5,7 +5,7 @@
 //! - panic hook:任何线程 panic 先写日志(含 backtrace)再走原 hook;
 //! - 看门狗:后台线程周期性向主线程投递探针闭包,超时未回执 → 判定主线程卡死,
 //!   记录持续时长与资源计数;连续两次未回执时(Windows)写一份 minidump 到日志目录
-//!   (单次进程生命周期至多一份;目录总量另有上限,见 windows.rs)。
+//!   (每次卡死事件至多一份,恢复后重置;目录总量另有上限,见 windows.rs)。
 //!   探针采用「投递后等回执」而非比对上次心跳时间,系统睡眠至多产生一次 miss 记录
 //!   (唤醒后探针会被主线程很快消化),不足以触发 dump;
 //!   预期内的主线程模态阻塞(如 Windows 拖拽的 `DoDragDrop`)由调用方通过
@@ -126,6 +126,9 @@ fn watchdog_loop(app: AppHandle) {
                     "diagnostics: main thread recovered after ~{:?}",
                     since.elapsed()
                 );
+                // 恢复后重置:下一次独立的卡死事件仍可取证(每次卡死至多一份,
+                // 日志目录 MAX_HANG_DUMPS 兜底磁盘占用)。
+                dump_attempted = false;
             }
             consecutive_misses = 0;
         } else {

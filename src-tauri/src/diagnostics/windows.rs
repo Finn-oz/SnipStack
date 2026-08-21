@@ -26,7 +26,7 @@ use windows::Win32::System::Diagnostics::Debug::{
 use windows::Win32::System::Threading::{GetGuiResources, GR_GDIOBJECTS, GR_USEROBJECTS};
 
 /// 日志目录里累计保留的卡死 dump 上限(跨进程生命周期),防止反复卡死刷满磁盘。
-/// 单次进程生命周期内看门狗至多写一份(见 mod.rs 的 `dump_attempted`)。
+/// 每次卡死事件至多写一份,恢复后重置(见 mod.rs 的 `dump_attempted`)。
 const MAX_HANG_DUMPS: usize = 3;
 
 pub(super) fn resource_summary() -> String {
