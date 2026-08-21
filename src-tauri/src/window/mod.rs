@@ -232,6 +232,8 @@ pub fn save_all_window_states(app_handle: &AppHandle) {
             log::warn!("save window state on exit failed for {label}: {err}");
         }
     }
+    // `save` 只更新内存并异步落盘;进程马上退出,这里必须同步刷完。
+    app_handle.state::<WindowStateStore>().flush_blocking();
 }
 
 /// 处理窗口关闭请求，让应用常驻后台（系统托盘）。

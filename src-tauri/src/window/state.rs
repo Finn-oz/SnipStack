@@ -1,7 +1,8 @@
 use std::collections::HashMap;
 use std::fs;
-use std::path::PathBuf;
-use std::sync::{Mutex, RwLock};
+use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{mpsc, Arc, Mutex, RwLock};
 
 use anyhow::Context;
 use serde::{Deserialize, Serialize};
@@ -19,9 +20,25 @@ pub struct WindowState {
     pub height: u32,
 }
 
+/// 交给持久化线程的一次落盘任务。generation 单调递增,
+/// 写线程据此丢弃过期快照,保证磁盘内容只会前进不会回退。
+struct PersistJob {
+    generation: u64,
+    path: PathBuf,
+    json: String,
+}
+
 pub struct WindowStateStore {
     path: RwLock<PathBuf>,
     states: Mutex<HashMap<String, WindowState>>,
+    /// `save` 的落盘走专用线程:`hide_window` 等高频路径在主线程上执行,
+    /// 同步 `fs::write` 在杀软扫描 / 云盘重定向 / 磁盘异常时没有超时,
+    /// 会把主线程(乃至整个事件循环)堵死——见「托盘图标消失」排查。
+    persist_tx: mpsc::Sender<PersistJob>,
+    generation: AtomicU64,
+    last_written: Arc<AtomicU64>,
+    /// 序列化写盘:持久化线程与 `flush_blocking`(退出路径)互斥。
+    write_lock: Arc<Mutex<()>>,
 }
 
 impl WindowStateStore {
@@ -48,24 +65,72 @@ impl WindowStateStore {
         };
 
         log::info!("window state store ready at {path:?}");
+
+        let last_written = Arc::new(AtomicU64::new(0));
+        let write_lock = Arc::new(Mutex::new(()));
+        let (persist_tx, persist_rx) = mpsc::channel::<PersistJob>();
+        spawn_persist_worker(
+            persist_rx,
+            Arc::clone(&last_written),
+            Arc::clone(&write_lock),
+        );
+
         Ok(Self {
             path: RwLock::new(path),
             states: Mutex::new(states),
+            persist_tx,
+            generation: AtomicU64::new(0),
+            last_written,
+            write_lock,
         })
     }
 
+    /// 更新内存态并异步落盘。调用方(常在主线程)只承担序列化开销,不碰磁盘。
     pub fn save(&self, label: &str, state: WindowState) -> Result<()> {
-        let mut states = self.states.lock().unwrap_or_else(|poisoned| {
-            log::error!("window state mutex poisoned on save, recovering");
-            poisoned.into_inner()
-        });
-        states.insert(label.to_owned(), state);
-        let json =
-            serde_json::to_string_pretty(&*states).context("failed to serialize window states")?;
-        let path = self.path();
-        fs::write(&path, json)
-            .with_context(|| format!("failed to write window state to {:?}", path))?;
+        let job = {
+            let mut states = self.states.lock().unwrap_or_else(|poisoned| {
+                log::error!("window state mutex poisoned on save, recovering");
+                poisoned.into_inner()
+            });
+            states.insert(label.to_owned(), state);
+            let json = serde_json::to_string_pretty(&*states)
+                .context("failed to serialize window states")?;
+            PersistJob {
+                generation: self.generation.fetch_add(1, Ordering::AcqRel) + 1,
+                path: self.path(),
+                json,
+            }
+        };
+
+        // 持久化线程若已死(不应发生),退回同步写,宁慢勿丢。
+        if let Err(mpsc::SendError(job)) = self.persist_tx.send(job) {
+            log::warn!("window state persist worker gone, falling back to sync write");
+            write_snapshot(&job, &self.last_written, &self.write_lock);
+        }
         Ok(())
+    }
+
+    /// 同步落盘当前快照。仅退出路径使用:进程随后就没了,必须等写完。
+    pub fn flush_blocking(&self) {
+        let job = {
+            let states = self.states.lock().unwrap_or_else(|poisoned| {
+                log::error!("window state mutex poisoned on flush, recovering");
+                poisoned.into_inner()
+            });
+            let json = match serde_json::to_string_pretty(&*states) {
+                Ok(json) => json,
+                Err(err) => {
+                    log::warn!("serialize window states on flush failed: {err}");
+                    return;
+                }
+            };
+            PersistJob {
+                generation: self.generation.fetch_add(1, Ordering::AcqRel) + 1,
+                path: self.path(),
+                json,
+            }
+        };
+        write_snapshot(&job, &self.last_written, &self.write_lock);
     }
 
     pub fn get(&self, label: &str) -> Option<WindowState> {
@@ -88,6 +153,10 @@ impl WindowStateStore {
             log::error!("window state mutex poisoned on rebase, recovering");
             poisoned.into_inner()
         }) = next_states;
+
+        // 作废仍在队列里的旧目录落盘任务,避免迁移后又写回老位置。
+        self.last_written
+            .store(self.generation.load(Ordering::Acquire), Ordering::Release);
         Ok(())
     }
 
@@ -99,7 +168,51 @@ impl WindowStateStore {
     }
 }
 
-fn load_states(path: &PathBuf) -> HashMap<String, WindowState> {
+fn spawn_persist_worker(
+    rx: mpsc::Receiver<PersistJob>,
+    last_written: Arc<AtomicU64>,
+    write_lock: Arc<Mutex<()>>,
+) {
+    if let Err(err) = std::thread::Builder::new()
+        .name("window-state-persist".into())
+        .spawn(move || {
+            while let Ok(mut job) = rx.recv() {
+                // 合并积压:磁盘上只需要最新快照,中间版本直接丢弃。
+                while let Ok(newer) = rx.try_recv() {
+                    job = newer;
+                }
+                write_snapshot(&job, &last_written, &write_lock);
+            }
+            // sender 全部释放(store 析构)→ 线程自然退出。
+        })
+    {
+        log::warn!("spawn window state persist worker failed: {err}");
+    }
+}
+
+/// 写盘走 tmp + rename,进程在写入途中被杀也不会留下截断的 JSON。
+/// generation 已落后于 `last_written` 的过期快照直接跳过。
+fn write_snapshot(job: &PersistJob, last_written: &AtomicU64, write_lock: &Mutex<()>) {
+    let _guard = write_lock.lock().unwrap_or_else(|poisoned| {
+        log::error!("window state write lock poisoned, recovering");
+        poisoned.into_inner()
+    });
+    if job.generation <= last_written.load(Ordering::Acquire) {
+        return;
+    }
+
+    let tmp = job.path.with_extension("json.tmp");
+    let result = fs::write(&tmp, &job.json).and_then(|_| fs::rename(&tmp, &job.path));
+    match result {
+        Ok(()) => last_written.store(job.generation, Ordering::Release),
+        Err(err) => {
+            let _ = fs::remove_file(&tmp);
+            log::warn!("write window state to {:?} failed: {err}", job.path);
+        }
+    }
+}
+
+fn load_states(path: &Path) -> HashMap<String, WindowState> {
     if !path.exists() {
         return HashMap::new();
     }

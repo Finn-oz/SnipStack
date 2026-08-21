@@ -4,8 +4,12 @@
 //! 且复现机器不总是可达。证据采集因此做进进程内,随日志一起留在用户机器上:
 //! - panic hook:任何线程 panic 先写日志(含 backtrace)再走原 hook;
 //! - 看门狗:后台线程周期性向主线程投递探针闭包,超时未回执 → 判定主线程卡死,
-//!   记录持续时长与资源计数;连续两次未回执时(Windows)写一份 minidump 到日志目录。
-//!   探针采用「投递后等回执」而非比对上次心跳时间,睡眠唤醒后不会误报;
+//!   记录持续时长与资源计数;连续两次未回执时(Windows)写一份 minidump 到日志目录
+//!   (单次进程生命周期至多一份;目录总量另有上限,见 windows.rs)。
+//!   探针采用「投递后等回执」而非比对上次心跳时间,系统睡眠至多产生一次 miss 记录
+//!   (唤醒后探针会被主线程很快消化),不足以触发 dump;
+//!   预期内的主线程模态阻塞(如 Windows 拖拽的 `DoDragDrop`)由调用方通过
+//!   [`expect_main_thread_block`] 标记,期间 miss 只记日志、不写 dump;
 //! - 资源采样:GDI / USER / 句柄 / 工作集周期性落日志(仅 Windows 有计数),
 //!   供句柄泄漏排查与 CI soak 测试断言使用(`scripts/soak-monitor.ps1` 会解析)。
 
@@ -30,6 +34,27 @@ const DUMP_AFTER_MISSES: u32 = 2;
 
 /// 主线程回执的探针序号。
 static PROBE_ECHO: AtomicU64 = AtomicU64::new(0);
+
+/// 当前处于「预期内主线程阻塞」的嵌套计数(如 `DoDragDrop` 模态拖拽)。
+static EXPECTED_BLOCKS: AtomicU64 = AtomicU64::new(0);
+
+/// 标记一段预期内的主线程长阻塞。guard 存活期间看门狗对 miss 只记日志、
+/// 不写 minidump,避免把合法的 OS 模态循环误判成卡死现场。
+#[must_use = "guard 释放即标记结束,须持有到阻塞段落结束"]
+pub struct MainThreadBlockGuard(());
+
+// 目前只有 Windows 拖拽路径使用;macOS 拖拽是 fire-and-forget,不经此标记。
+#[cfg_attr(not(target_os = "windows"), allow(dead_code))]
+pub fn expect_main_thread_block() -> MainThreadBlockGuard {
+    EXPECTED_BLOCKS.fetch_add(1, Ordering::AcqRel);
+    MainThreadBlockGuard(())
+}
+
+impl Drop for MainThreadBlockGuard {
+    fn drop(&mut self) {
+        EXPECTED_BLOCKS.fetch_sub(1, Ordering::AcqRel);
+    }
+}
 
 /// 安装全局 panic hook:先写日志再链回原 hook(原 hook 负责 stderr 输出)。
 /// 尽早调用;logger 尚未就绪时 `log::error!` 为 no-op,但原 hook 仍然生效。
@@ -103,12 +128,20 @@ fn watchdog_loop(app: AppHandle) {
         } else {
             consecutive_misses += 1;
             let since = *hung_since.get_or_insert_with(Instant::now);
-            log::error!(
-                "diagnostics: main thread unresponsive (miss #{consecutive_misses}, ~{:?} so far); {}",
-                since.elapsed(),
-                resource_summary(),
-            );
-            if consecutive_misses >= DUMP_AFTER_MISSES && !dump_attempted {
+            let expected_block = EXPECTED_BLOCKS.load(Ordering::Acquire) > 0;
+            if expected_block {
+                log::warn!(
+                    "diagnostics: probe missed during expected main-thread block (e.g. drag-out), miss #{consecutive_misses}, ~{:?} so far",
+                    since.elapsed(),
+                );
+            } else {
+                log::error!(
+                    "diagnostics: main thread unresponsive (miss #{consecutive_misses}, ~{:?} so far); {}",
+                    since.elapsed(),
+                    resource_summary(),
+                );
+            }
+            if consecutive_misses >= DUMP_AFTER_MISSES && !dump_attempted && !expected_block {
                 dump_attempted = true;
                 #[cfg(target_os = "windows")]
                 windows::write_hang_dump(&app);
