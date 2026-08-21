@@ -73,12 +73,13 @@ pub async fn start_drag_clipboard_item(
 
     #[cfg(target_os = "windows")]
     {
-        // `DoDragDrop` 会同步占用主线程直到拖放结束;告知看门狗这是预期内阻塞,
-        // 避免用户长按拖拽被误判为主线程卡死而写 minidump。
-        let _expected_block = crate::diagnostics::expect_main_thread_block();
-
         let (tx, rx) = std::sync::mpsc::channel();
         app.run_on_main_thread(move || {
+            // `DoDragDrop` 会同步占用主线程直到拖放结束;告知看门狗这是预期内
+            // 阻塞,避免用户长按拖拽被误判为卡死而写 minidump。guard 在闭包内
+            // 创建,只覆盖真正的拖拽执行段——若主线程因别处卡死、闭包还在排队,
+            // 不应被这里的标记掩盖。
+            let _expected_block = crate::diagnostics::expect_main_thread_block();
             let _ = tx.send(dispatch_drag(&window, payload, preview));
         })
         .map_err(|err| AppError::Clipboard(format!("dispatch to main thread failed: {err}")))?;

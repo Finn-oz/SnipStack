@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{mpsc, Arc, Mutex, RwLock};
+use std::sync::{mpsc, Arc, Mutex};
 
 use anyhow::Context;
 use serde::{Deserialize, Serialize};
@@ -28,16 +28,25 @@ struct PersistJob {
     json: String,
 }
 
+/// path 与 states 合在一把锁下:曾经分作 `RwLock<PathBuf>` + `Mutex<HashMap>`,
+/// `save`(states → path)与 `rebase`(path → states)取锁顺序相反,存在 ABBA 死锁。
+/// 单锁后不存在锁顺序问题,快照的 path/states 也天然一致。
+struct StoreInner {
+    path: PathBuf,
+    states: HashMap<String, WindowState>,
+}
+
 pub struct WindowStateStore {
-    path: RwLock<PathBuf>,
-    states: Mutex<HashMap<String, WindowState>>,
+    inner: Mutex<StoreInner>,
     /// `save` 的落盘走专用线程:`hide_window` 等高频路径在主线程上执行,
     /// 同步 `fs::write` 在杀软扫描 / 云盘重定向 / 磁盘异常时没有超时,
     /// 会把主线程(乃至整个事件循环)堵死——见「托盘图标消失」排查。
     persist_tx: mpsc::Sender<PersistJob>,
     generation: AtomicU64,
     last_written: Arc<AtomicU64>,
-    /// 序列化写盘:持久化线程与 `flush_blocking`(退出路径)互斥。
+    /// 序列化写盘:持久化线程、`flush_blocking`(退出路径)与 `rebase` 的
+    /// 作废操作互斥。锁顺序约定:先 `inner` 后 `write_lock`,反向禁止
+    /// (`write_snapshot` 只拿 `write_lock`,不碰 `inner`)。
     write_lock: Arc<Mutex<()>>,
 }
 
@@ -76,8 +85,7 @@ impl WindowStateStore {
         );
 
         Ok(Self {
-            path: RwLock::new(path),
-            states: Mutex::new(states),
+            inner: Mutex::new(StoreInner { path, states }),
             persist_tx,
             generation: AtomicU64::new(0),
             last_written,
@@ -85,21 +93,30 @@ impl WindowStateStore {
         })
     }
 
+    fn lock_inner(&self, op: &str) -> std::sync::MutexGuard<'_, StoreInner> {
+        self.inner.lock().unwrap_or_else(|poisoned| {
+            log::error!("window state mutex poisoned on {op}, recovering");
+            poisoned.into_inner()
+        })
+    }
+
+    /// 在 `inner` 锁内做一次快照,发放单调递增的 generation。
+    fn snapshot_job(&self, inner: &StoreInner) -> Result<PersistJob> {
+        let json = serde_json::to_string_pretty(&inner.states)
+            .context("failed to serialize window states")?;
+        Ok(PersistJob {
+            generation: self.generation.fetch_add(1, Ordering::AcqRel) + 1,
+            path: inner.path.clone(),
+            json,
+        })
+    }
+
     /// 更新内存态并异步落盘。调用方(常在主线程)只承担序列化开销,不碰磁盘。
     pub fn save(&self, label: &str, state: WindowState) -> Result<()> {
         let job = {
-            let mut states = self.states.lock().unwrap_or_else(|poisoned| {
-                log::error!("window state mutex poisoned on save, recovering");
-                poisoned.into_inner()
-            });
-            states.insert(label.to_owned(), state);
-            let json = serde_json::to_string_pretty(&*states)
-                .context("failed to serialize window states")?;
-            PersistJob {
-                generation: self.generation.fetch_add(1, Ordering::AcqRel) + 1,
-                path: self.path(),
-                json,
-            }
+            let mut inner = self.lock_inner("save");
+            inner.states.insert(label.to_owned(), state);
+            self.snapshot_job(&inner)?
         };
 
         // 持久化线程若已死(不应发生),退回同步写,宁慢勿丢。
@@ -113,32 +130,20 @@ impl WindowStateStore {
     /// 同步落盘当前快照。仅退出路径使用:进程随后就没了,必须等写完。
     pub fn flush_blocking(&self) {
         let job = {
-            let states = self.states.lock().unwrap_or_else(|poisoned| {
-                log::error!("window state mutex poisoned on flush, recovering");
-                poisoned.into_inner()
-            });
-            let json = match serde_json::to_string_pretty(&*states) {
-                Ok(json) => json,
+            let inner = self.lock_inner("flush");
+            match self.snapshot_job(&inner) {
+                Ok(job) => job,
                 Err(err) => {
                     log::warn!("serialize window states on flush failed: {err}");
                     return;
                 }
-            };
-            PersistJob {
-                generation: self.generation.fetch_add(1, Ordering::AcqRel) + 1,
-                path: self.path(),
-                json,
             }
         };
         write_snapshot(&job, &self.last_written, &self.write_lock);
     }
 
     pub fn get(&self, label: &str) -> Option<WindowState> {
-        let states = self.states.lock().unwrap_or_else(|poisoned| {
-            log::error!("window state mutex poisoned on get, recovering");
-            poisoned.into_inner()
-        });
-        states.get(label).cloned()
+        self.lock_inner("get").states.get(label).cloned()
     }
 
     /// 数据目录热切换后重新绑定窗口状态文件，并重新读取新目录里的状态。
@@ -148,23 +153,24 @@ impl WindowStateStore {
         let path = dir.join(STATE_FILENAME);
         let next_states = load_states(&path);
 
-        *self.path.write().expect("window state path poisoned") = path;
-        *self.states.lock().unwrap_or_else(|poisoned| {
-            log::error!("window state mutex poisoned on rebase, recovering");
-            poisoned.into_inner()
-        }) = next_states;
+        let cutoff = {
+            let mut inner = self.lock_inner("rebase");
+            inner.path = path;
+            inner.states = next_states;
+            // 切换点之前发放的 generation 全部作废;之后的 save 已带新路径,不受影响。
+            self.generation.load(Ordering::Acquire)
+        };
 
-        // 作废仍在队列里的旧目录落盘任务,避免迁移后又写回老位置。
-        self.last_written
-            .store(self.generation.load(Ordering::Acquire), Ordering::Release);
+        // 与写盘互斥地作废旧目录任务:等正在写的旧任务收尾,之后队列里
+        // generation ≤ cutoff 的过期快照会被 write_snapshot 统一跳过。
+        {
+            let _guard = self.write_lock.lock().unwrap_or_else(|poisoned| {
+                log::error!("window state write lock poisoned on rebase, recovering");
+                poisoned.into_inner()
+            });
+            self.last_written.fetch_max(cutoff, Ordering::AcqRel);
+        }
         Ok(())
-    }
-
-    fn path(&self) -> PathBuf {
-        self.path
-            .read()
-            .expect("window state path poisoned")
-            .clone()
     }
 }
 
