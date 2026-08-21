@@ -107,6 +107,59 @@ cargo test
 - `commands/` 保持薄层：参数校验 + 调用下层模块，不写业务逻辑。
 - 平台代码用 `#[cfg(target_os = "macos")]` / `#[cfg(target_os = "windows")]` 隔离；新增能力两端同步实现，或显式标注 TODO。
 
+## 诊断与稳定性
+
+来自「托盘图标消失 / 二次启动无响应」线上排查(2026-08,v0.1.2/v0.1.3)的固化约定:
+
+**主线程纪律**
+
+- 主线程(Tauri 事件循环)禁止同步磁盘 I/O 与其它无超时阻塞调用。杀软扫描、
+  云盘重定向、磁盘异常下 `fs::write` 没有上限,会堵死事件循环——托盘、单实例
+  转发、窗口显示全部失效,且干净磁盘的 CI 测不出来。
+- 高频路径的持久化参照 `window/state.rs` 的 persist worker 模式:内存态锁内更新、
+  落盘交专用线程,generation 单调计数防旧快照回退(通道可能乱序,合并积压按
+  generation 取最大),tmp + rename 原子写,退出路径 `flush_blocking()` 同步兜底。
+- 复制/迁移数据目录前必须先 flush 异步持久化(见 `commands/storage.rs`),
+  否则拷走的是落后快照、在途任务又会被 rebase 作废。
+- 必须在主线程执行的模态阻塞(如 Windows `DoDragDrop`)要用
+  `diagnostics::expect_main_thread_block()` guard 包住,且 guard 在主线程闭包内
+  创建——只覆盖真实执行段,不掩盖排队期间的卡死。
+
+**黑匣子(`diagnostics/`)**
+
+- panic hook(带 backtrace)、主线程心跳看门狗(30s 探针 / 15s 回执超时 /
+  连续 2 次 miss 写 minidump,预期内阻塞升级为 10 次)、GDI/USER/句柄/工作集
+  每 5 分钟采样、`RunEvent::Exit` 落 "clean shutdown" 标记。
+- 排查线上问题:取用户 `%LOCALAPPDATA%\com.snipstack.app\logs` 整个目录。
+  日志尾部无 clean shutdown = 崩溃/被杀;`main thread unresponsive` + `hang-*.dmp`
+  = 主线程卡死,dump 含全线程栈(WinDbg 或 Mac 上 `minidump-stackwalk` 解析);
+  GDI/USER 采样逼近 10000 = 句柄耗尽。dump 可能含剪贴板内容片段,索要时提醒用户。
+
+**浸泡测试**
+
+- CI:Actions 手动触发 `Soak Test`(`soak.yml`,可传时长与 explorer 重启间隔;
+  公开仓库不计费)。脚本 `scripts/soak-monitor.ps1` 也可在真实 Win11 直接跑。
+- 场景含真实行为模拟(Alt+C 面板开合、面板外点击走鼠标钩子、Alt+X/Alt+F4、
+  Alt+S/Esc、空闲段、explorer 强杀);断言:进程存活、资源无泄漏趋势、无
+  watchdog/panic 记录、window-state.json 在运行期间被更新(证明持久化路径被压到)。
+  断言只认本次运行时间之后的证据,本地复跑无需清日志。
+- 发版前跑一轮全绿再发;CI 是干净环境,复现不了睡眠唤醒/杀软/脏磁盘,
+  真实现场靠黑匣子被动收集。
+
+## 发版流程
+
+版本号只改 `package.json`(tauri.conf 引用它)。固化步骤:
+
+1. `CHANGELOG.md` 与 `CHANGELOG.zh-CN.md` 都加 `[X.Y.Z] - 日期` 章节,否则 release CI 直接失败。
+2. 打 tag 前查撞车:`git tag -l vX.Y.Z` 有输出即冲突(上游 EcoPaste 的 tag 与我们版本号可能相撞)。
+3. `chore: release vX.Y.Z` 提交 → `git tag vX.Y.Z` → 推 master + tag → CI 产出草稿 Release。
+4. **patch latest.json**:tauri-action 生成的 `platforms.*.url` 是 `api.github.com` 资产 API
+   形式(更新器拉不动),必须改写为
+   `https://github.com/Finn-oz/SnipStack/releases/download/vX.Y.Z/<setup.exe>` 后 `--clobber` 重传。每次发版都要做。
+5. 安装包算 SHA-256 附进 Release 说明(格式见既往 Release)。
+6. publish 并标记 latest;验证 `releases/latest/download/latest.json` 返回新版本号、
+   安装包直链 200。
+
 ## 前端约定
 
 **React 与组件**
