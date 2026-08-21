@@ -185,6 +185,14 @@ async fn switch_storage_location(
     }
 
     let _pause_guard = pause_watcher(&app);
+
+    // 窗口几何落盘是异步的(见 WindowStateStore);必须在复制目录前同步刷完,
+    // 否则拷进新目录的 window-state.json 可能落后于内存态,rebase 又会作废
+    // 在途任务——刚调整过的窗口几何就永久丢了。注意位置必须在 copy 之前:
+    // rebase 之前才 flush 的话写的是旧目录,新目录已经复制完,救不回来。
+    app.state::<crate::window::WindowStateStore>()
+        .flush_blocking();
+
     let switch_error = Arc::new(Mutex::new(None::<String>));
     let switch_error_for_task = switch_error.clone();
     let app_for_db = app.clone();

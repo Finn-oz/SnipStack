@@ -74,6 +74,8 @@ function Get-Sample([System.Diagnostics.Process]$proc) {
 }
 
 Write-Host "Starting $ExePath for $DurationMinutes minutes (explorer restart every $ExplorerRestartEveryMinutes min)"
+# 结束断言只看本次运行产生的证据:历史 dump / 旧日志行不应让本地复跑误红。
+$runStart = Get-Date
 $app = Start-Process -FilePath $ExePath -PassThru
 Start-Sleep -Seconds 20
 if ($app.HasExited) { throw "app exited during startup, exit code $($app.ExitCode)" }
@@ -108,7 +110,8 @@ while ((Get-Date) -lt $deadline) {
 
     # 间歇空闲段:每 20 分钟静默 3 分钟(只采样,不产生任何负载)。
     if (($now - $lastIdleStart).TotalMinutes -ge 20) {
-        $lastIdleStart = $now
+        # 从空闲结束时刻起算下一个 20 分钟,保持稳定的 20+3 节奏。
+        $lastIdleStart = $now.AddMinutes(3)
         $idleUntil = $now.AddMinutes(3)
         Write-Host "Idle stretch for 3 minutes..."
     }
@@ -218,18 +221,38 @@ if ($samples.Count -ge 4) {
 }
 
 # 扫描 app 自带黑匣子日志:watchdog 卡死记录与 panic。
+# 只认本次运行时间之后的记录:日志按时间戳过滤,dump 按文件修改时间过滤,
+# 本地在未清理的日志目录上复跑不会被历史证据误判。
 if (Test-Path $LogDir) {
     $hits = Get-ChildItem -Path $LogDir -Filter *.log |
         Select-String -Pattern 'main thread unresponsive', 'panic on thread'
     foreach ($hit in $hits) {
-        $failures.Add("app log: $($hit.Line.Trim())")
+        $inThisRun = $true
+        if ($hit.Line -match '^\[(\d{4}-\d{2}-\d{2})\]\[(\d{2}:\d{2}:\d{2})\]') {
+            try {
+                $ts = [datetime]::ParseExact("$($Matches[1]) $($Matches[2])", 'yyyy-MM-dd HH:mm:ss', $null)
+                $inThisRun = $ts -ge $runStart
+            } catch { }
+        }
+        if ($inThisRun) { $failures.Add("app log: $($hit.Line.Trim())") }
     }
-    $dumps = Get-ChildItem -Path $LogDir -Filter 'hang-*.dmp' -ErrorAction SilentlyContinue
+    $dumps = Get-ChildItem -Path $LogDir -Filter 'hang-*.dmp' -ErrorAction SilentlyContinue |
+        Where-Object { $_.LastWriteTime -ge $runStart }
     foreach ($dump in $dumps) {
         $failures.Add("hang minidump present: $($dump.Name)")
     }
 } else {
     $failures.Add("app log dir not found: $LogDir (app never initialized logging?)")
+}
+
+# 弱断言:窗口几何持久化路径确实被压到了——面板/偏好窗口的每次隐藏都应
+# 触发异步落盘,window-state.json 的修改时间必须晚于本次运行开始。
+$stateFile = Get-ChildItem "$env:LOCALAPPDATA\com.snipstack.app" -Recurse -Filter 'window-state.json' -ErrorAction SilentlyContinue |
+    Select-Object -First 1
+if (-not $stateFile) {
+    $failures.Add("window-state.json not found: hide -> persist path never executed")
+} elseif ($stateFile.LastWriteTime -lt $runStart) {
+    $failures.Add("window-state.json not updated during run: persistence path not exercised (SendKeys simulation may have failed)")
 }
 
 if (-not $app.HasExited) { Stop-Process -Id $app.Id -Force -ErrorAction SilentlyContinue }

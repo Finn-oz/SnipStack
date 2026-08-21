@@ -29,7 +29,8 @@ const PROBE_TIMEOUT: Duration = Duration::from_secs(15);
 const PROBE_POLL: Duration = Duration::from_millis(500);
 /// 每多少次探针落一条资源采样日志(30s × 10 = 5 分钟)。
 const RESOURCE_LOG_TICKS: u64 = 10;
-/// 连续 miss 达到该值时写 minidump(即卡死约 1 分钟后)。
+/// 连续 miss 达到该值时写 minidump(即卡死约 1.5 分钟后:
+/// 每轮 miss 耗时 = 30s 探针间隔 + 15s 回执等待)。
 const DUMP_AFTER_MISSES: u32 = 2;
 /// 处于「预期内阻塞」(如拖拽)时的升级阈值:正常拖拽不会持续这么久
 /// (10 次 miss ≈ 7 分钟),仍然卡着就不再豁免——拖拽内部死锁恰是要抓的现场。
