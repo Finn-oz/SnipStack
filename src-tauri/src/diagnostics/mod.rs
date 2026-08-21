@@ -31,6 +31,9 @@ const PROBE_POLL: Duration = Duration::from_millis(500);
 const RESOURCE_LOG_TICKS: u64 = 10;
 /// 连续 miss 达到该值时写 minidump(即卡死约 1 分钟后)。
 const DUMP_AFTER_MISSES: u32 = 2;
+/// 处于「预期内阻塞」(如拖拽)时的升级阈值:正常拖拽不会持续这么久
+/// (10 次 miss ≈ 7 分钟),仍然卡着就不再豁免——拖拽内部死锁恰是要抓的现场。
+const DUMP_AFTER_MISSES_EXPECTED: u32 = 10;
 
 /// 主线程回执的探针序号。
 static PROBE_ECHO: AtomicU64 = AtomicU64::new(0);
@@ -141,7 +144,14 @@ fn watchdog_loop(app: AppHandle) {
                     resource_summary(),
                 );
             }
-            if consecutive_misses >= DUMP_AFTER_MISSES && !dump_attempted && !expected_block {
+            // 预期内阻塞只是提高阈值而非永久豁免:guard 若因阻塞段死锁而一直
+            // 不释放,超过升级阈值照样取证。
+            let dump_threshold = if expected_block {
+                DUMP_AFTER_MISSES_EXPECTED
+            } else {
+                DUMP_AFTER_MISSES
+            };
+            if consecutive_misses >= dump_threshold && !dump_attempted {
                 dump_attempted = true;
                 #[cfg(target_os = "windows")]
                 windows::write_hang_dump(&app);

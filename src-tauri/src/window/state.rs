@@ -183,9 +183,13 @@ fn spawn_persist_worker(
         .name("window-state-persist".into())
         .spawn(move || {
             while let Ok(mut job) = rx.recv() {
-                // 合并积压:磁盘上只需要最新快照,中间版本直接丢弃。
-                while let Ok(newer) = rx.try_recv() {
-                    job = newer;
+                // 合并积压:磁盘上只需要最新快照。按 generation 取最大,不能按
+                // 到达顺序取最后——generation 在 inner 锁内发放、send 在锁外,
+                // 并发 save 时通道内可能乱序,按到达序会把旧快照当成最新写盘。
+                while let Ok(other) = rx.try_recv() {
+                    if other.generation > job.generation {
+                        job = other;
+                    }
                 }
                 write_snapshot(&job, &last_written, &write_lock);
             }
