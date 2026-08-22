@@ -7,6 +7,16 @@ SnipStack 是 [EcoPaste](https://github.com/EcoPasteHub/EcoPaste) 的硬分叉
 
 ## [Unreleased]
 
+## [0.1.4] - 2026-08-22
+
+### 修复
+
+- 安装包现在随 `SnipStack.exe` 一并部署 Microsoft Visual C++ 运行库 DLL。
+  此前所有版本在未安装 VC++ Redistributable 的全新 Windows 上都无法启动,
+  报「找不到 MSVCP140_1.dll」:OCR 引擎静态链接的 ONNX Runtime 仍依赖 C++
+  标准库,0.1.0 的静态 CRT 改动并未覆盖它(0.1.0 日志中「无需 VC++
+  运行库即可安装」的说法因此并不准确)。现在不再需要单独安装运行库。
+
 ## [0.1.3] - 2026-08-21
 
 ### 修复

@@ -8,6 +8,19 @@ clipboard-manager codebase, see the upstream changelog.
 
 ## [Unreleased]
 
+## [0.1.4] - 2026-08-22
+
+### Fixed
+
+- The installer now ships the Microsoft Visual C++ runtime DLLs next to
+  `SnipStack.exe`. On a fresh Windows install without the VC++
+  Redistributable, every previous version failed to start with
+  "MSVCP140_1.dll was not found": the OCR engine's statically linked ONNX
+  Runtime still depends on the C++ standard library, which the 0.1.0
+  static-CRT change did not cover (the 0.1.0 note claiming the app installs
+  without the VC++ Redistributable was therefore inaccurate). No separate
+  runtime installation is needed anymore.
+
 ## [0.1.3] - 2026-08-21
 
 ### Fixed
