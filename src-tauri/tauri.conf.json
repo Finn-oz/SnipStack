@@ -69,10 +69,16 @@
       "resources/ocr/",
       "../LICENSE",
       "../NOTICE",
-      "../THIRD-PARTY-NOTICES.md"
+      "../THIRD-PARTY-NOTICES.md",
+      "resources/vcredist/*.dll"
     ],
     "shortDescription": "SnipStack",
-    "targets": ["nsis", "dmg", "app"]
+    "targets": ["nsis", "dmg", "app"],
+    "windows": {
+      "nsis": {
+        "installerHooks": "./nsis/hooks.nsh"
+      }
+    }
   },
   "identifier": "com.snipstack.app",
   "plugins": {

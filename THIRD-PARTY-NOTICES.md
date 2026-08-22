@@ -32,3 +32,13 @@ crate.
 
 QR/barcode decoding uses [rxing](https://github.com/rxing-core/rxing)
 (Apache License 2.0), a Rust port of the ZXing library.
+
+## Microsoft Visual C++ Runtime
+
+The Windows installer deploys the Microsoft Visual C++ 2015–2022
+Redistributable runtime DLLs (`msvcp140*.dll`, `vcruntime140*.dll`,
+`concrt140.dll`, `vccorlib140.dll`) next to `SnipStack.exe` ("app-local"
+deployment) because the statically linked ONNX Runtime depends on the C++
+standard library. These files are redistributed under the terms of the
+Microsoft Visual Studio redistributable license (see Microsoft's
+`Redist.txt` for Visual Studio 2022). They are not modified.

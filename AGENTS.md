@@ -150,6 +150,14 @@ cargo test
 
 版本号只改 `package.json`(tauri.conf 引用它)。固化步骤:
 
+0. **VC++ 运行库必须随包分发**:`SnipStack.exe` 导入 `msvcp140*.dll`(ONNX Runtime 的
+   C++ 静态库按 /MD 编译,`crt-static` 管不到),全新 Windows 没有 VC++ Redistributable
+   会报「找不到 MSVCP140_1.dll」。CI 的 `Stage VC++ runtime DLLs` 步骤把 runner 上
+   VS 2022 的 `Microsoft.VC143.CRT\*.dll` 拷进 `src-tauri/resources/vcredist/`(不入库),
+   `nsis/hooks.nsh` 安装后再拷到安装根目录。本地 Windows 构建也要先放好这些 DLL,
+   否则 `tauri build` 因 resources glob 无匹配而失败——这是有意的,宁可构建失败也不
+   发出缺运行库的包。验证方法:解包安装包后用 PE 导入表(如 `pefile`)核对。
+
 1. `CHANGELOG.md` 与 `CHANGELOG.zh-CN.md` 都加 `[X.Y.Z] - 日期` 章节,否则 release CI 直接失败。
 2. 打 tag 前查撞车:`git tag -l vX.Y.Z` 有输出即冲突(上游 EcoPaste 的 tag 与我们版本号可能相撞)。
 3. `chore: release vX.Y.Z` 提交 → `git tag vX.Y.Z` → 推 master + tag → CI 产出草稿 Release。
