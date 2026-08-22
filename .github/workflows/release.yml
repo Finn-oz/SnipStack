@@ -195,11 +195,36 @@ jobs:
       - name: Stage VC++ runtime DLLs
         shell: pwsh
         run: |
-          $crt = Get-ChildItem "${env:ProgramFiles}\Microsoft Visual Studio\2022\*\VC\Redist\MSVC\*\x64\Microsoft.VC143.CRT" -Directory -ErrorAction SilentlyContinue |
-            Sort-Object FullName -Descending | Select-Object -First 1
-          if (-not $crt) { throw "Microsoft.VC143.CRT redist directory not found on runner" }
-          New-Item -ItemType Directory -Force -Path src-tauri/resources/vcredist | Out-Null
-          Copy-Item "$($crt.FullName)\*.dll" src-tauri/resources/vcredist/
+          # 不硬编码 VS 版本/工具集(runner 镜像会升级:2022/VC143 → 18/VC145…),
+          # 用 vswhere 定位安装目录,再通配 Microsoft.VC*.CRT 取最新。
+          $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+          $roots = @()
+          if (Test-Path $vswhere) {
+            $roots += & $vswhere -latest -products * -property installationPath
+          }
+          $roots += "${env:ProgramFiles}\Microsoft Visual Studio\*\*"
+          $crt = $roots | Where-Object { $_ } | ForEach-Object {
+            Get-ChildItem "$_\VC\Redist\MSVC\*\x64\Microsoft.VC*.CRT" -Directory -ErrorAction SilentlyContinue
+          } | Sort-Object FullName -Descending | Select-Object -First 1
+          if (-not $crt) {
+            Write-Host "::warning::VC redist directory not found under Visual Studio; listing for diagnosis"
+            Get-ChildItem "${env:ProgramFiles}\Microsoft Visual Studio" -ErrorAction SilentlyContinue | ForEach-Object { "  VS root: $($_.FullName)" }
+            # 兜底:系统级安装的 VC++ 运行库同样是官方 redist 文件。
+            $sys = "$env:SystemRoot\System32"
+            if (Test-Path "$sys\msvcp140.dll") {
+              New-Item -ItemType Directory -Force -Path src-tauri/resources/vcredist | Out-Null
+              Copy-Item "$sys\msvcp140*.dll","$sys\vcruntime140*.dll","$sys\concrt140.dll","$sys\vccorlib140.dll" src-tauri/resources/vcredist/ -ErrorAction SilentlyContinue
+              Write-Host "::warning::staged VC++ runtime DLLs from System32 fallback"
+            } else {
+              throw "no VC++ runtime DLLs available on runner"
+            }
+          } else {
+            Write-Host "VC redist dir: $($crt.FullName)"
+          }
+          if ($crt) {
+            New-Item -ItemType Directory -Force -Path src-tauri/resources/vcredist | Out-Null
+            Copy-Item "$($crt.FullName)\*.dll" src-tauri/resources/vcredist/
+          }
           Get-ChildItem src-tauri/resources/vcredist | ForEach-Object { "$($_.Name) $($_.Length)" }
           foreach ($required in 'msvcp140.dll','msvcp140_1.dll','vcruntime140.dll','vcruntime140_1.dll') {
             if (-not (Test-Path "src-tauri/resources/vcredist/$required")) { throw "missing $required" }
