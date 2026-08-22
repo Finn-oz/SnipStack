@@ -1,7 +1,7 @@
 {
   "name": "snipstack",
   "private": true,
-  "version": "0.1.4",
+  "version": "0.1.5",
   "description": "Snip-to-text screen OCR + searchable clipboard history for Windows 11.",
   "author": "SnipStack Contributors",
   "license": "Apache-2.0",

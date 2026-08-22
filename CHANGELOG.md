@@ -8,6 +8,17 @@ clipboard-manager codebase, see the upstream changelog.
 
 ## [Unreleased]
 
+## [0.1.5] - 2026-08-22
+
+### Fixed
+
+- The app icon shown inside the app is now SnipStack's own: the clipboard
+  window header, preference sidebar, onboarding screens, update window, and
+  the fallback icon for entries without a source app were all still showing
+  the upstream EcoPaste logo, because the frontend icon assets were missed
+  when the app was rebranded (window, tray, and installer icons were already
+  correct).
+
 ## [0.1.4] - 2026-08-22
 
 ### Fixed
