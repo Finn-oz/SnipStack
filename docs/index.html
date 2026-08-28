@@ -78,49 +78,11 @@
     animation: rise .8s .16s cubic-bezier(.2,.7,.2,1) both;
   }
 
-  /* 信笺 */
-  .letter {
-    margin-top: 44px;
-    width: 100%;
-    background: linear-gradient(178deg, var(--paper) 0%, var(--paper-dim) 100%);
-    color: var(--ink);
-    border-radius: 6px;
-    padding: clamp(28px, 6vw, 44px) clamp(24px, 6vw, 48px);
-    position: relative;
-    box-shadow: 0 24px 60px #00000059, 0 2px 0 #fff2 inset;
-    animation: rise .8s .24s cubic-bezier(.2,.7,.2,1) both;
-  }
-  .letter::before { /* 邮票 */
-    content: "❤";
-    position: absolute; top: 18px; right: 20px;
-    width: 44px; height: 52px;
-    display: grid; place-items: center;
-    color: #c0392b; font-size: 18px;
-    background:
-      radial-gradient(circle at 0 0, transparent 4px, var(--paper) 4.5px) 0 0 / 11px 11px;
-    border: 1px dashed #c9c0ae;
-    transform: rotate(4deg);
-  }
-  .letter .salut { font-family: var(--serif-zh); font-size: 17px; color: var(--ink-soft); }
-  .letter .body {
-    font-family: var(--serif-zh);
-    font-size: clamp(19px, 4.4vw, 23px);
-    font-weight: 600;
-    line-height: 2;
-    margin-top: 14px;
-  }
-  .letter .body em { font-style: normal; color: var(--violet-deep); }
-  .letter .sign {
-    font-family: var(--serif-zh);
-    text-align: right; margin-top: 18px;
-    color: var(--ink-soft); font-size: 15px;
-  }
-
   /* 下载 */
   .dl {
-    margin-top: 40px; width: 100%;
+    margin-top: 56px; width: 100%;
     display: flex; flex-direction: column; align-items: center;
-    animation: rise .8s .32s cubic-bezier(.2,.7,.2,1) both;
+    animation: rise .8s .24s cubic-bezier(.2,.7,.2,1) both;
   }
   .dl-btn {
     display: inline-flex; align-items: center; gap: 12px;
@@ -140,7 +102,7 @@
   .steps {
     margin-top: 44px; width: 100%;
     display: grid; gap: 12px;
-    animation: rise .8s .4s cubic-bezier(.2,.7,.2,1) both;
+    animation: rise .8s .32s cubic-bezier(.2,.7,.2,1) both;
   }
   .steps h2 {
     font-family: var(--serif-zh); font-size: 15px; font-weight: 600;
@@ -165,7 +127,7 @@
 
   footer {
     margin-top: 56px; color: #7f76ad; font-size: 13px; text-align: center; line-height: 2;
-    animation: rise .8s .48s cubic-bezier(.2,.7,.2,1) both;
+    animation: rise .8s .4s cubic-bezier(.2,.7,.2,1) both;
   }
   footer a { color: #a79ed6; text-decoration: none; border-bottom: 1px solid #a79ed655; }
   footer a:hover { color: #cdc6f2; }
@@ -179,14 +141,6 @@
   <img class="app-icon" src="icon.png?v=1" alt="SnipStack 图标">
   <h1>SnipStack</h1>
   <p class="tagline">框选屏幕任意文字 · 留住复制过的一切</p>
-
-  <div class="letter">
-    <p class="salut">亲爱的:</p>
-    <p class="body">这个小工具是<em>送给你</em>的——<br>
-    从今往后,屏幕上任何抄不下来的字,<br>
-    框一下,就是你的了。</p>
-    <p class="sign">—— 爱你的 Finn</p>
-  </div>
 
   <div class="dl">
     <a class="dl-btn" id="dl" href="https://github.com/Finn-oz/SnipStack/releases/latest">
