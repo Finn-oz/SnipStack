@@ -74,6 +74,7 @@
     color: #cdc6f2;
     font-size: clamp(15px, 3.6vw, 18px);
     letter-spacing: .12em;
+    text-align: center;
     margin-top: 10px;
     animation: rise .8s .16s cubic-bezier(.2,.7,.2,1) both;
   }
@@ -95,7 +96,7 @@
   }
   .dl-btn:hover { transform: translateY(-2px); box-shadow: 0 16px 38px #5b4be088, 0 0 0 1px #ffffff2e inset; }
   .dl-btn svg { width: 20px; height: 20px; }
-  .dl-meta { margin-top: 12px; color: #a79ed6; font-size: 13px; letter-spacing: .04em; }
+  .dl-meta { margin-top: 12px; color: #a79ed6; font-size: 13px; letter-spacing: .04em; text-align: center; }
   .dl-meta a { color: #cdc6f2; }
 
   /* 步骤 */
@@ -132,39 +133,80 @@
   footer a { color: #a79ed6; text-decoration: none; border-bottom: 1px solid #a79ed655; }
   footer a:hover { color: #cdc6f2; }
 
+  /* 英文文案字距比中文短语窄,套用中文字距会显得过散 */
+  .lang-en .tagline { letter-spacing: .02em; }
+  .lang-en .steps h2 { letter-spacing: .1em; }
+
   @keyframes rise { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: none; } }
   @media (prefers-reduced-motion: reduce) { * { animation: none !important; } }
 </style>
 </head>
 <body>
 <div class="wrap">
-  <img class="app-icon" src="icon.png?v=1" alt="SnipStack 图标">
+  <img class="app-icon" id="app-icon" src="icon.png?v=1" alt="SnipStack 图标">
   <h1>SnipStack</h1>
-  <p class="tagline">框选屏幕任意文字 · 留住复制过的一切</p>
+  <p class="tagline" id="tagline">框选屏幕任意文字 · 留住复制过的一切</p>
 
   <div class="dl">
     <a class="dl-btn" id="dl" href="https://github.com/Finn-oz/SnipStack/releases/latest">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-      下载 SnipStack
+      <span id="dl-btn-text">下载 SnipStack</span>
     </a>
-    <p class="dl-meta" id="meta">Windows 11 · 免费 · 无广告 · <a href="https://github.com/Finn-oz/SnipStack/releases/latest">所有版本</a></p>
+    <p class="dl-meta" id="meta">Windows 11 · 免费 · 无广告 · <a href="https://github.com/Finn-oz/SnipStack/releases">所有版本</a></p>
   </div>
 
   <div class="steps">
-    <h2>三步装好</h2>
-    <div class="step"><span class="no">1</span><span>点上面的按钮下载,打开下载好的 <b>SnipStack…setup.exe</b>。</span></div>
-    <div class="step"><span class="no">2</span><span>如果 Windows 弹出蓝色的"已保护你的电脑",别慌——点<b>「更多信息」</b>,再点<b>「仍要运行」</b>就好。(这只是因为我们还没买微软的签名证书。)</span></div>
-    <div class="step"><span class="no">3</span><span>装好后它住在右下角托盘里。按 <kbd>Alt</kbd>+<kbd>S</kbd> 框选屏幕上的文字,按 <kbd>Alt</kbd>+<kbd>C</kbd> 翻你复制过的所有东西。</span></div>
+    <h2 id="steps-title">三步装好</h2>
+    <div class="step"><span class="no">1</span><span id="step1">点上面的按钮下载,打开下载好的 <b>SnipStack…setup.exe</b>。</span></div>
+    <div class="step"><span class="no">2</span><span id="step2">如果 Windows 弹出蓝色的"已保护你的电脑",别慌——点<b>「更多信息」</b>,再点<b>「仍要运行」</b>就好。(这只是因为我们还没买微软的签名证书。)</span></div>
+    <div class="step"><span class="no">3</span><span id="step3">装好后它住在右下角托盘里。按 <kbd>Alt</kbd>+<kbd>S</kbd> 框选屏幕上的文字,按 <kbd>Alt</kbd>+<kbd>C</kbd> 翻你复制过的所有东西。</span></div>
   </div>
 
   <footer>
-    你复制的一切只保存在你自己的电脑上,不上传、无账号、无广告。<br>
-    <a href="https://github.com/Finn-oz/SnipStack">开源于 GitHub</a> · Apache-2.0 ·
-    基于 <a href="https://github.com/EcoPasteHub/EcoPaste">EcoPaste</a> 分叉开发
+    <span id="footer-line1">你复制的一切只保存在你自己的电脑上,不上传、无账号、无广告。</span><br>
+    <span id="footer-line2"><a href="https://github.com/Finn-oz/SnipStack">开源于 GitHub</a> · Apache-2.0 ·
+    基于 <a href="https://github.com/EcoPasteHub/EcoPaste">EcoPaste</a> 分叉开发</span>
   </footer>
 </div>
 
 <script>
+  // 按操作系统/浏览器语言选择文案;默认中文,非中文一律回退英文。
+  var LANG = (navigator.language || navigator.userLanguage || "zh").toLowerCase().indexOf("zh") === 0 ? "zh" : "en";
+
+  if (LANG === "en") {
+    document.documentElement.lang = "en";
+    document.documentElement.classList.add("lang-en");
+    document.title = "SnipStack — Grab Any Text On Screen";
+    document.querySelector('meta[name="description"]').setAttribute("content",
+      "SnipStack: a free, open-source screenshot OCR + clipboard history tool for Windows 11.");
+    document.getElementById("app-icon").alt = "SnipStack icon";
+    document.getElementById("tagline").textContent = "Select any text on screen · Keep everything you copy";
+    document.getElementById("dl-btn-text").textContent = "Download SnipStack";
+    document.getElementById("steps-title").textContent = "Three Steps to Install";
+    document.getElementById("step1").innerHTML =
+      "Click the button above to download, then open <b>SnipStack…setup.exe</b>.";
+    document.getElementById("step2").innerHTML =
+      "If Windows shows the blue \"Windows protected your PC\" screen, don't worry — click " +
+      "<b>\"More info\"</b>, then <b>\"Run anyway\"</b>. (That's just because we haven't " +
+      "bought a Microsoft signing certificate yet.)";
+    document.getElementById("step3").innerHTML =
+      "Once installed, it lives in your system tray. Press <kbd>Alt</kbd>+<kbd>S</kbd> to select text on " +
+      "screen, and <kbd>Alt</kbd>+<kbd>C</kbd> to browse everything you've copied.";
+    document.getElementById("footer-line1").textContent =
+      "Everything you copy stays on your own computer — no uploads, no account, no ads.";
+    document.getElementById("footer-line2").innerHTML =
+      '<a href="https://github.com/Finn-oz/SnipStack">Open source on GitHub</a> · Apache-2.0 · forked from ' +
+      '<a href="https://github.com/EcoPasteHub/EcoPaste">EcoPaste</a>';
+  }
+
+  function metaLine(tagPrefix) {
+    var prefix = tagPrefix ? tagPrefix + " · " : "";
+    return LANG === "en"
+      ? prefix + 'Windows 11 · Free · No ads · <a href="https://github.com/Finn-oz/SnipStack/releases">All releases</a>'
+      : prefix + 'Windows 11 · 免费 · 无广告 · <a href="https://github.com/Finn-oz/SnipStack/releases">所有版本</a>';
+  }
+  document.getElementById("meta").innerHTML = metaLine("");
+
   // 若能取到最新 Release,则把按钮直连安装包并显示版本号;失败时保持 releases 页兜底。
   fetch("https://api.github.com/repos/Finn-oz/SnipStack/releases/latest")
     .then(r => r.ok ? r.json() : null)
@@ -172,8 +214,7 @@
       if (!rel) return;
       const asset = (rel.assets || []).find(a => a.name.endsWith("-setup.exe"));
       if (asset) document.getElementById("dl").href = asset.browser_download_url;
-      const meta = document.getElementById("meta");
-      meta.innerHTML = `${rel.tag_name} · Windows 11 · 免费 · 无广告 · <a href="https://github.com/Finn-oz/SnipStack/releases">所有版本</a>`;
+      document.getElementById("meta").innerHTML = metaLine(rel.tag_name);
     })
     .catch(() => {});
 </script>
