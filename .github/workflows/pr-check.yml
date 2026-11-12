@@ -149,5 +149,16 @@ jobs:
         run: cargo clippy --all-targets --all-features -- -D warnings
 
       - name: Rust test
+        if: runner.os != 'Windows'
         working-directory: src-tauri
         run: cargo test --all-targets --all-features
+
+      # ONNX Runtime 的静态库按 /MD 编译,debug 测试产物在 crt-static(/MT)下链接不过
+      # (LNK2001 __imp_*)。测试只验证逻辑,改用动态 CRT 链接;环境变量 RUSTFLAGS
+      # 会整体取代 .cargo/config.toml 里的 target rustflags。
+      - name: Rust test (Windows, dynamic CRT)
+        if: runner.os == 'Windows'
+        working-directory: src-tauri
+        run: cargo test --all-targets --all-features
+        env:
+          RUSTFLAGS: -C target-feature=-crt-static
