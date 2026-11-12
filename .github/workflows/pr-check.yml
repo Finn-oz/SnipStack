@@ -124,6 +124,17 @@ jobs:
         env:
           PLATFORM: ${{ matrix.os }}
 
+      # tauri-build 会校验 bundle.resources 的 glob,而 resources/vcredist/*.dll 不入库
+      # (发版与浸泡流程从 VS Redist 目录拷入)。这里只编译和测试、不出安装包,
+      # 取 runner 系统目录里的运行库让 glob 有匹配即可。
+      - name: Stage VC++ runtime DLLs
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path src-tauri/resources/vcredist | Out-Null
+          Copy-Item "$env:SystemRoot\System32\msvcp140*.dll","$env:SystemRoot\System32\vcruntime140*.dll" src-tauri/resources/vcredist/
+          if (-not (Get-ChildItem src-tauri/resources/vcredist/*.dll)) { throw "no VC++ runtime DLLs on runner" }
+
       - name: Cache cargo
         uses: Swatinem/rust-cache@v2
         with:
