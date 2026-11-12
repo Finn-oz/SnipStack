@@ -569,7 +569,7 @@
           "title": "Index Copied Images"
         },
         "saveToHistory": {
-          "description": "Store the snip image with its text so the screenshot is searchable.",
+          "description": "Save the recognized text to history as a text item you can search and copy again.",
           "title": "Save to History"
         }
       },

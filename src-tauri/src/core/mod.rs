@@ -1,4 +1,5 @@
 pub mod error;
+pub mod fs;
 pub mod in_flight;
 pub mod paths;
 pub mod prevent_default;

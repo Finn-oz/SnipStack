@@ -39,6 +39,12 @@ pub const CLIPBOARD_UPDATED_EVENT: &str = "clipboard://updated";
 /// Windows 走事件驱动（`WM_CLIPBOARDUPDATE`），此值被忽略。
 const CLIPBOARD_POLL_INTERVAL: std::time::Duration = std::time::Duration::from_millis(120);
 
+/// 监听意外结束后的重建退避：从 1 秒起每次翻倍，封顶 1 分钟；
+/// 一轮监听稳定跑满 [`WATCH_HEALTHY_RUN`] 后退避归位。
+const WATCH_RESTART_MIN_DELAY: Duration = Duration::from_secs(1);
+const WATCH_RESTART_MAX_DELAY: Duration = Duration::from_secs(60);
+const WATCH_HEALTHY_RUN: Duration = Duration::from_secs(300);
+
 /// Another clipboard listener can briefly hold the Windows clipboard open. Retry those read
 /// failures within a bounded window before dropping the update.
 const CLIPBOARD_READ_RETRY_DELAYS: [Duration; 3] = [
@@ -218,39 +224,74 @@ fn spawn_watch_thread(
     std::thread::Builder::new()
         .name("clipboard-watcher".to_owned())
         .spawn(move || {
-            // 平台剪贴板句柄在本线程内构造，不跨线程移动。
-            let reader = match ClipboardReader::new() {
-                Ok(reader) => reader,
-                Err(err) => {
-                    log::error!("clipboard watcher: failed to create reader: {err}");
-                    return;
+            let mut backoff = WATCH_RESTART_MIN_DELAY;
+            loop {
+                let started = std::time::Instant::now();
+                // 监听正常情况下阻塞到进程退出；走到这里说明它出错返回或 panic 了
+                // （系统监听窗口收消息失败、USER 句柄耗尽、回调里的意外 panic）。
+                // 线程若就此结束，历史会静默停止记录而托盘仍显示「监听中」，所以退避重建。
+                let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                    watch_until_stopped(
+                        app.clone(),
+                        guard.clone(),
+                        store.clone(),
+                        app_icon_store.clone(),
+                        registry.clone(),
+                        pause.clone(),
+                    );
+                }));
+                if outcome.is_err() {
+                    log::error!("clipboard watcher panicked");
                 }
-            };
 
-            let mut watcher =
-                match ClipboardWatcherContext::new_with_interval(CLIPBOARD_POLL_INTERVAL) {
-                    Ok(watcher) => watcher,
-                    Err(err) => {
-                        log::error!("clipboard watcher: failed to create watcher: {err}");
-                        return;
-                    }
-                };
-
-            watcher.add_handler(ClipboardChangeHandler {
-                reader,
-                app,
-                guard,
-                store,
-                app_icon_store,
-                registry,
-                pause,
-            });
-
-            log::info!("clipboard watcher started");
-            // 阻塞直至进程退出。
-            watcher.start_watch();
+                if started.elapsed() >= WATCH_HEALTHY_RUN {
+                    backoff = WATCH_RESTART_MIN_DELAY;
+                }
+                log::error!("clipboard watcher stopped unexpectedly; restarting in {backoff:?}");
+                std::thread::sleep(backoff);
+                backoff = (backoff * 2).min(WATCH_RESTART_MAX_DELAY);
+            }
         })
         .expect("failed to spawn clipboard watcher thread");
+}
+
+/// 建立一轮监听并阻塞到它结束。平台剪贴板句柄在调用线程内构造，不跨线程移动。
+fn watch_until_stopped(
+    app: AppHandle,
+    guard: Arc<WritebackGuard>,
+    store: ImageStore,
+    app_icon_store: AppIconStore,
+    registry: AppsRegistry,
+    pause: WatcherPause,
+) {
+    let reader = match ClipboardReader::new() {
+        Ok(reader) => reader,
+        Err(err) => {
+            log::error!("clipboard watcher: failed to create reader: {err}");
+            return;
+        }
+    };
+
+    let mut watcher = match ClipboardWatcherContext::new_with_interval(CLIPBOARD_POLL_INTERVAL) {
+        Ok(watcher) => watcher,
+        Err(err) => {
+            log::error!("clipboard watcher: failed to create watcher: {err}");
+            return;
+        }
+    };
+
+    watcher.add_handler(ClipboardChangeHandler {
+        reader,
+        app,
+        guard,
+        store,
+        app_icon_store,
+        registry,
+        pause,
+    });
+
+    log::info!("clipboard watcher started");
+    watcher.start_watch();
 }
 
 struct ClipboardChangeHandler {

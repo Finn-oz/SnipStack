@@ -105,18 +105,22 @@ fn remove_images(app: &AppHandle, file_names: &[String]) {
 
 /// `Retention` → 绝对截止时间。`Forever` 或 `value == 0` 表示禁用。
 /// 月份近似按 30 天处理（与前端展示口径一致，不引日历库）。
+///
+/// 保留期大到超出 chrono 可表示的日期范围时同样返回 `None`（等价于永久保留）：
+/// 设置里填一个天文数字不应让 `now - dur` panic——那会杀掉清理任务，且每次启动重演。
 fn retention_cutoff(r: &Retention, now: DateTime<Utc>) -> Option<DateTime<Utc>> {
     if r.value == 0 {
         return None;
     }
+    let value = i64::from(r.value);
     let dur = match r.unit {
         RetentionUnit::Forever => return None,
-        RetentionUnit::Hours => ChronoDuration::hours(r.value as i64),
-        RetentionUnit::Days => ChronoDuration::days(r.value as i64),
-        RetentionUnit::Weeks => ChronoDuration::weeks(r.value as i64),
-        RetentionUnit::Months => ChronoDuration::days((r.value as i64) * 30),
-    };
-    Some(now - dur)
+        RetentionUnit::Hours => ChronoDuration::try_hours(value),
+        RetentionUnit::Days => ChronoDuration::try_days(value),
+        RetentionUnit::Weeks => ChronoDuration::try_weeks(value),
+        RetentionUnit::Months => ChronoDuration::try_days(value * 30),
+    }?;
+    now.checked_sub_signed(dur)
 }
 
 #[cfg(test)]
@@ -141,6 +145,31 @@ mod tests {
             &Retention {
                 value: 7,
                 unit: RetentionUnit::Forever
+            },
+            now()
+        )
+        .is_none());
+    }
+
+    #[test]
+    fn retention_cutoff_treats_out_of_range_value_as_forever() {
+        for unit in [
+            RetentionUnit::Hours,
+            RetentionUnit::Days,
+            RetentionUnit::Weeks,
+            RetentionUnit::Months,
+        ] {
+            let retention = Retention {
+                value: u32::MAX,
+                unit,
+            };
+            // 小时单位下 u32::MAX 仍在可表示范围内，其余单位溢出；两种情况都不能 panic。
+            let _ = retention_cutoff(&retention, now());
+        }
+        assert!(retention_cutoff(
+            &Retention {
+                value: u32::MAX,
+                unit: RetentionUnit::Weeks
             },
             now()
         )

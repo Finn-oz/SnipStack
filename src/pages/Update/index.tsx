@@ -15,6 +15,7 @@ import {
   type UpdateMetadata,
 } from "@/commands";
 import { TAURI_EVENT } from "@/constants/events";
+import { GITHUB_URL } from "@/constants/urls";
 import { WINDOW_LABEL } from "@/constants/windows";
 import { useTauriListen } from "@/hooks/useTauriListen";
 import { log } from "@/utils/log";
@@ -362,7 +363,7 @@ function resolveProgressPercent(
 function resolveReleaseNotesUrl(version: string) {
   const tag = version.startsWith("v") ? version : `v${version}`;
 
-  return `https://github.com/snipstack/SnipStack/releases/tag/${tag}`;
+  return `${GITHUB_URL}/releases/tag/${tag}`;
 }
 
 function formatBytes(value: number) {

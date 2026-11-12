@@ -36,6 +36,10 @@ pub const SNIP_DONE_EVENT: &str = "snip://done";
 /// 选区过小视为误触,按取消处理(物理像素)。
 const MIN_SELECTION_PX: u32 = 4;
 
+/// 覆盖层建好后等待任一覆盖层回报就绪并显示的时限。取得宽:慢机器上建 WebView
+/// 加载冻结帧可能要几秒,误取消比多等一会儿更糟。
+const OVERLAY_READY_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(15);
+
 /// 单显示器冻结帧与几何信息(物理像素;宽高从 `image` 上取,不另存副本)。
 struct SnipFrame {
     image: RgbaImage,
@@ -53,6 +57,9 @@ struct SnipSession {
     frames: Vec<SnipFrame>,
     /// 会话开始时光标所在的显示器;该覆盖层获得焦点,Esc 才能直达。
     focus_index: usize,
+    /// 是否已有覆盖层显示出来。覆盖层建成时不可见,靠前端页面加载完冻结帧后回报
+    /// 才显示;超时仍无一显示的会话由就绪看门狗取消。
+    overlay_shown: bool,
     /// 本会话专属的冻结帧临时目录(避免并发会话互删共享目录)。
     dir: PathBuf,
 }
@@ -111,6 +118,7 @@ pub fn start_snip(app: &AppHandle) -> Result<()> {
             id: session_id.clone(),
             frames: Vec::new(),
             focus_index: 0,
+            overlay_shown: false,
             dir: temp_root().join(&session_id),
         });
     }
@@ -227,7 +235,32 @@ fn capture_frames(app: &AppHandle, session_id: &str) -> Result<()> {
         }
     })
     .context("dispatch overlay build")?;
+    spawn_overlay_ready_watchdog(app, session_id);
     Ok(())
+}
+
+/// 就绪看门狗:覆盖层不可见地建好之后,取消与确认全靠前端页面跑起来。页面若没加载
+/// 成功(WebView 起不来、脚本出错),覆盖层永不显示,用户没有任何可操作的界面,
+/// 会话占位不释放,之后每次截屏取字都被当成「已有会话」忽略,直到重启。
+/// 超时仍无一覆盖层显示就取消本会话并报失败。
+fn spawn_overlay_ready_watchdog(app: &AppHandle, session_id: &str) {
+    let app = app.clone();
+    let session_id = session_id.to_owned();
+    tauri::async_runtime::spawn(async move {
+        tokio::time::sleep(OVERLAY_READY_TIMEOUT).await;
+
+        let cancelled = cancel_snip_matching(&app, |session| {
+            session.id == session_id && !session.overlay_shown
+        });
+        if !cancelled {
+            return;
+        }
+        log::error!("snip overlay not shown within {OVERLAY_READY_TIMEOUT:?}, session cancelled");
+        let lang = crate::i18n::current_language(&app);
+        let message =
+            crate::i18n::commands::label(lang, crate::i18n::commands::Key::SnipOverlayTimeout);
+        emit_done(&app, false, 0, Some(message.to_owned()));
+    });
 }
 
 /// 当前会话是否仍是指定 id。
@@ -240,10 +273,16 @@ fn session_is_current(app: &AppHandle, id: &str) -> bool {
 /// 仅当当前会话仍是指定 id 时取消并清理,返回是否真的取消了。
 /// 供异步失败路径使用:会话已被用户取消或被新会话替换时按空操作处理。
 fn cancel_snip_if(app: &AppHandle, id: &str) -> bool {
+    cancel_snip_matching(app, |session| session.id == id)
+}
+
+/// 仅当当前会话满足条件时取消并清理,返回是否真的取消了。
+/// 判定与摘除在同一次持锁内完成,判定之后会话状态不会再被别的线程改动。
+fn cancel_snip_matching(app: &AppHandle, matches: impl FnOnce(&SnipSession) -> bool) -> bool {
     let dir = {
         let state = app.state::<SnipState>();
         let mut session = crate::core::sync::lock_unpoisoned(&state.session);
-        if session.as_ref().is_none_or(|s| s.id != id) {
+        if !session.as_ref().is_some_and(matches) {
             return false;
         }
         session.take().map(|s| s.dir)
@@ -328,6 +367,13 @@ pub fn overlay_ready(app: &AppHandle, monitor: usize) -> Result<()> {
     };
 
     window.show().context("show snip overlay")?;
+    {
+        let state = app.state::<SnipState>();
+        let mut session = crate::core::sync::lock_unpoisoned(&state.session);
+        if let Some(session) = session.as_mut() {
+            session.overlay_shown = true;
+        }
+    }
     if monitor == focus_index {
         let _ = window.set_focus();
     }

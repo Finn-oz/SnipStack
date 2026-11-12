@@ -8,6 +8,43 @@ clipboard-manager codebase, see the upstream changelog.
 
 ## [Unreleased]
 
+### Fixed
+
+- Saving settings no longer blocks readers of the settings. Previously, on a slow
+  disk (antivirus scans, cloud sync, failing hardware) the background update check
+  writing settings could stall the UI thread along with it — another suspected cause
+  of the intermittent "tray icon disappears / app cannot be opened again" issue.
+- Snipping can no longer silently stop working until restart: Alt+F4 on the capture
+  overlay now cancels the snip, and a capture overlay that never appears is cancelled
+  automatically with a notice.
+- History cleanup no longer deletes items you copied again recently: the retention
+  period and item limit now go by the last time an item was copied or used rather
+  than when it was first recorded.
+- Copying the same content in quick succession no longer creates duplicate entries
+  (duplicate image entries could also lose the image when one of them was deleted).
+- Images, thumbnails and icons are now written atomically, so a full disk or a killed
+  process can no longer leave a permanently broken image behind.
+- When the settings file cannot be read, the original is kept as
+  `settings.json.unreadable-*` before falling back to defaults instead of being
+  silently overwritten; transient read failures are retried.
+- The clipboard watcher is rebuilt automatically if it stops unexpectedly, instead of
+  showing "listening" while no longer recording.
+- Turning off launch at startup (including on first run) no longer fails with
+  0x80070005.
+- Update checks and downloads now time out instead of hanging forever on a stalled
+  connection; installing an update and the tray "Relaunch" action now save window
+  positions and leave a clean-shutdown marker in the log.
+- The "Release notes" link in the update window pointed to the wrong address.
+- With "Scroll to top on open" turned off, items copied while the window was hidden
+  now show up when it opens.
+- Dragging items out to other apps repeatedly no longer stacks up drop-forwarding
+  layers.
+- Changing the data directory no longer reports failure when the switch succeeded
+  but the old directory could not be fully removed.
+- An extremely large retention value no longer disables the cleanup task.
+- The "Snip → Save to History" description now matches the behavior (only the
+  recognized text is saved).
+
 ## [0.1.5] - 2026-08-22
 
 ### Fixed

@@ -236,7 +236,11 @@ async fn switch_storage_location(
     }
 
     let settings = rebase_storage_states(&app).await?;
-    remove_old_storage_data(&app, &current)?;
+    // 走到这里切换已经生效。旧目录删不干净（被资源管理器打开、图片被其他程序占用）
+    // 只是残留占盘，不能让命令报失败——前端会以为没切成，后面的刷新事件也发不出去。
+    if let Err(err) = remove_old_storage_data(&app, &current) {
+        log::warn!("remove old data dir {current:?} after storage switch failed: {err}");
+    }
     emit_settings_updated(&app, &settings);
     emit_clipboard_imported(&app);
 

@@ -247,6 +247,23 @@ pub fn intercept_close_request(window: &Window) -> bool {
         return true;
     }
 
+    // 截屏覆盖层没有「隐藏后常驻」的语义：对它的关闭请求（Alt+F4）按取消会话处理。
+    // 照常 hide 的话覆盖层消失而会话占位不释放，之后每次截屏取字都被当成
+    // 「已有会话」直接忽略，静默失效到重启。取消走异步任务，与前端 Esc 取消同一条路径，
+    // 不在窗口事件回调里同步销毁窗口。
+    if window
+        .label()
+        .starts_with(crate::capture::OVERLAY_LABEL_PREFIX)
+    {
+        let app = window.app_handle().clone();
+        tauri::async_runtime::spawn(async move {
+            if let Err(err) = crate::capture::cancel_snip(&app) {
+                log::warn!("cancel snip on overlay close request failed: {err}");
+            }
+        });
+        return true;
+    }
+
     // 关闭按钮不走 `hide_window`，需在此单独保存几何，否则 preference 的移动/缩放会丢失。
     if let Err(err) = state::save_window_state(window.app_handle(), window.label()) {
         log::warn!(

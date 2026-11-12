@@ -77,14 +77,8 @@ fn blake3_hex(bytes: &[u8]) -> String {
 }
 
 fn write_if_absent(path: &Path, bytes: &[u8]) -> Result<()> {
-    if path.exists() {
-        return Ok(());
-    }
-    if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent)
-            .with_context(|| format!("failed to create app-icons dir {parent:?}"))?;
-    }
-    std::fs::write(path, bytes).with_context(|| format!("failed to write app icon {path:?}"))?;
+    crate::core::fs::write_if_absent(path, bytes)
+        .with_context(|| format!("failed to write app icon {path:?}"))?;
     Ok(())
 }
 

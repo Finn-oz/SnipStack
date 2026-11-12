@@ -116,6 +116,8 @@ export function usePreviewPayload(
         }
 
         log.error("load preview payload failed", error);
+        // 清掉上一条的内容：否则锚定在新条目上的预览面板会继续显示旧条目的正文。
+        setPayload(null);
         setLoadingItemId(null);
       }
     }

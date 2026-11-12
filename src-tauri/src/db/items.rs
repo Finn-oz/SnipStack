@@ -63,16 +63,29 @@ fn kind_tag(kind: ClipboardKind) -> &'static str {
     }
 }
 
+/// 串行化 [`upsert_item`] 的查重与写入，见该函数说明。
+static UPSERT_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+
 /// 入库主入口：按 `item.content_hash` 去重。
 /// 命中已有记录 → 复用 [`increment_item_use_count`] 累加并刷新 `updated_at`，不插入新行；
 /// 未命中 → 调用 [`insert_item`] 插入。返回生效行 id 与是否去重。
+///
+/// 「查重 → 累加 / 插入」之间隔着 await，而 `content_hash` 上没有唯一约束：监听回调
+/// 每个事件各起一个任务，同内容的两次事件（连按复制、一次复制触发多次系统通知）
+/// 交错时会各插一行；图片的两行共用同一个落盘文件，删掉其中一行就把另一行的图也删了。
+/// 这里用进程级锁把整段串行化——入库频率是用户复制的节奏，串行没有可感知的代价。
 pub async fn upsert_item(pool: &SqlitePool, item: &ClipboardItem) -> Result<UpsertResult> {
+    let _serial = UPSERT_LOCK.lock().await;
+
     if let Some(existing) = find_item_by_content_hash(pool, &item.content_hash).await? {
-        increment_item_use_count(pool, &existing.id).await?;
-        return Ok(UpsertResult {
-            id: existing.id,
-            deduplicated: true,
-        });
+        // 查到之后、累加之前该行可能被历史清理删掉：没更新到任何行就落回插入，
+        // 否则这次复制会被当成「已去重」而静默丢失。
+        if increment_item_use_count(pool, &existing.id).await? {
+            return Ok(UpsertResult {
+                id: existing.id,
+                deduplicated: true,
+            });
+        }
     }
 
     insert_item(pool, item).await?;
@@ -272,8 +285,9 @@ pub async fn update_item_group(pool: &SqlitePool, id: &str, group_id: Option<&st
 }
 
 /// `use_count + 1` 并刷新 `updated_at`（命中去重时复用）。
-pub async fn increment_item_use_count(pool: &SqlitePool, id: &str) -> Result<()> {
-    sqlx::query(
+/// 返回是否真的更新到了行；目标行已不存在时为 `false`。
+pub async fn increment_item_use_count(pool: &SqlitePool, id: &str) -> Result<bool> {
+    let result = sqlx::query(
         "UPDATE clipboard_items SET use_count = use_count + 1, updated_at = ? WHERE id = ?",
     )
     .bind(Utc::now())
@@ -281,7 +295,7 @@ pub async fn increment_item_use_count(pool: &SqlitePool, id: &str) -> Result<()>
     .execute(pool)
     .await
     .context("failed to increment clipboard item use_count")?;
-    Ok(())
+    Ok(result.rows_affected() > 0)
 }
 
 /// 删除单条记录。若删除的是图片记录，返回其落盘文件名（`<hash>.png`），供调用方删图；
@@ -336,6 +350,10 @@ pub struct CleanupOutcome {
 }
 
 /// 历史清理：按「时间下限」和「最大条数」删除条目；置顶 / 收藏项一律保留。
+///
+/// 新旧一律按 `updated_at`（最近一次复制 / 复用的时间）判断，不看 `created_at`：
+/// 再次复制同内容命中去重时只刷新 `updated_at`，按首次创建时间清理会把用户
+/// 刚刚复制过的条目当成过期记录删掉。
 /// 返回删除行数与被删图片的文件名。`older_than = None` 跳过时长清理；`max_count = None` 或 `Some(0)` 跳过条数清理。
 pub async fn cleanup_history(
     pool: &SqlitePool,
@@ -347,7 +365,7 @@ pub async fn cleanup_history(
     if let Some(cutoff) = older_than {
         let rows = sqlx::query_as::<_, (ClipboardKind, String)>(
             "DELETE FROM clipboard_items \
-             WHERE is_pinned = 0 AND is_favorite = 0 AND created_at < ? \
+             WHERE is_pinned = 0 AND is_favorite = 0 AND updated_at < ? \
              RETURNING kind, content",
         )
         .bind(cutoff)
@@ -358,13 +376,13 @@ pub async fn cleanup_history(
     }
 
     if let Some(max) = max_count.filter(|n| *n > 0) {
-        // 仅在非置顶 / 非收藏集合内按 created_at DESC 保留前 max 条，多余的删除。
+        // 仅在非置顶 / 非收藏集合内按 updated_at DESC 保留前 max 条，多余的删除。
         // SQLite 中 `LIMIT -1 OFFSET n` 表示「跳过前 n 条，剩下全要」。
         let rows = sqlx::query_as::<_, (ClipboardKind, String)>(
             "DELETE FROM clipboard_items WHERE id IN ( \
                  SELECT id FROM clipboard_items \
                  WHERE is_pinned = 0 AND is_favorite = 0 \
-                 ORDER BY created_at DESC \
+                 ORDER BY updated_at DESC \
                  LIMIT -1 OFFSET ? \
              ) \
              RETURNING kind, content",
@@ -1184,6 +1202,7 @@ mod tests {
         let mk = |id: &str, ts: i64, fav: bool, pin: bool| {
             let mut it = sample_item(id);
             it.created_at = DateTime::from_timestamp(ts, 0).unwrap();
+            it.updated_at = it.created_at;
             it.is_favorite = fav;
             it.is_pinned = pin;
             it
@@ -1215,15 +1234,18 @@ mod tests {
         for n in 0..5i64 {
             let mut it = sample_item(&format!("p{n}"));
             it.created_at = DateTime::from_timestamp(1_000 + n, 0).unwrap();
+            it.updated_at = it.created_at;
             insert_item(&pool, &it).await.unwrap();
         }
         let mut fav = sample_item("fav");
         fav.is_favorite = true;
         fav.created_at = DateTime::from_timestamp(500, 0).unwrap();
+        fav.updated_at = fav.created_at;
         insert_item(&pool, &fav).await.unwrap();
         let mut pin = sample_item("pin");
         pin.is_pinned = true;
         pin.created_at = DateTime::from_timestamp(400, 0).unwrap();
+        pin.updated_at = pin.created_at;
         insert_item(&pool, &pin).await.unwrap();
 
         let outcome = cleanup_history(&pool, None, Some(2)).await.unwrap();
@@ -1234,6 +1256,39 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(ids(&all), ["pin", "p4", "p3", "fav"]);
+    }
+
+    /// 很久以前首次复制、刚刚又复制过一次的条目（去重命中只刷新 `updated_at`）
+    /// 不能被时长清理或条数裁剪当成旧记录删掉。
+    #[tokio::test]
+    async fn cleanup_history_keeps_recently_reused_items() {
+        let pool = memory_pool().await;
+        let mut reused = sample_item("reused");
+        reused.created_at = DateTime::from_timestamp(1_000, 0).unwrap();
+        reused.updated_at = DateTime::from_timestamp(9_000, 0).unwrap();
+        let mut stale = sample_item("stale");
+        stale.created_at = DateTime::from_timestamp(2_000, 0).unwrap();
+        stale.updated_at = stale.created_at;
+        insert_item(&pool, &reused).await.unwrap();
+        insert_item(&pool, &stale).await.unwrap();
+
+        let cutoff = DateTime::from_timestamp(5_000, 0).unwrap();
+        let outcome = cleanup_history(&pool, Some(cutoff), Some(1)).await.unwrap();
+        assert_eq!(outcome.removed, 1);
+
+        let all = query_items(&pool, &ClipboardItemQuery::default())
+            .await
+            .unwrap();
+        assert_eq!(ids(&all), ["reused"]);
+    }
+
+    #[tokio::test]
+    async fn increment_use_count_reports_missing_row() {
+        let pool = memory_pool().await;
+        insert_item(&pool, &sample_item("a")).await.unwrap();
+
+        assert!(increment_item_use_count(&pool, "a").await.unwrap());
+        assert!(!increment_item_use_count(&pool, "gone").await.unwrap());
     }
 
     #[tokio::test]
@@ -1260,8 +1315,10 @@ mod tests {
         img.content = "cafe1234.png".to_owned();
         img.content_hash = content_hash(ClipboardKind::Image, "cafe1234.png");
         img.created_at = DateTime::from_timestamp(1_000, 0).unwrap();
+        img.updated_at = img.created_at;
         let mut txt = sample_item("txt");
         txt.created_at = DateTime::from_timestamp(1_000, 0).unwrap();
+        txt.updated_at = txt.created_at;
         insert_item(&pool, &img).await.unwrap();
         insert_item(&pool, &txt).await.unwrap();
 

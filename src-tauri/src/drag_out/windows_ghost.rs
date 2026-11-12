@@ -160,7 +160,9 @@ unsafe fn try_wrap_hwnd(hwnd: HWND) {
         return;
     }
 
-    // 已经包装过的 inner 不要再二次包装（每个 inner 只允许出现一次）。
+    // 已经处理过的指针不要再包一层：既包括被包装过的原始 inner，也包括我们注册上去的
+    // wrapper 自己。注册之后这个属性指向的就是 wrapper，只记 inner 的话每次拖拽都会
+    // 在上一层 wrapper 外面再套一层，转发链和 COM 对象随拖拽次数只增不减。
     {
         let inners = wrapped_inners().lock().unwrap();
         if inners.contains(&(raw as usize)) {
@@ -205,6 +207,9 @@ unsafe fn try_wrap_hwnd(hwnd: HWND) {
         return;
     }
 
-    wrapped_inners().lock().unwrap().push(raw as usize);
+    let mut inners = wrapped_inners().lock().unwrap();
+    inners.push(raw as usize);
+    inners.push(wrapper.as_raw() as usize);
+    drop(inners);
     log::debug!("drag ghost: wrapped IDropTarget on hwnd {:?}", hwnd.0);
 }

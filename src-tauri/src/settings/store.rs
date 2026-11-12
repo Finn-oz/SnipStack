@@ -7,7 +7,7 @@
 use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
-use std::sync::RwLock;
+use std::sync::{Mutex, RwLock};
 
 use anyhow::Context;
 use tauri::AppHandle;
@@ -21,9 +21,24 @@ use super::model::{
 
 const FILENAME: &str = "settings.json";
 
+/// 启动时读设置文件遇到 IO 错误的重试间隔（总计约 0.2 秒，启动路径上可接受）。
+const READ_RETRY_DELAYS: [std::time::Duration; 3] = [
+    std::time::Duration::from_millis(30),
+    std::time::Duration::from_millis(60),
+    std::time::Duration::from_millis(120),
+];
+
 pub struct SettingsStore {
     path: RwLock<PathBuf>,
     current: RwLock<Settings>,
+    /// 串行化所有写路径（合并、重置、整体替换、换目录）。
+    ///
+    /// 落盘在这把锁下进行，**不**在 `current` 的写锁下：`snapshot()` 的读者里有主线程
+    /// （托盘菜单、热键打开窗口、窗口空闲计时器），而写入方里有不由用户触发的后台任务
+    /// （自动检查更新记录时间）。磁盘被杀软扫描、云盘同步或硬件异常拖住时 `fsync`
+    /// 没有时限，若此时持着 `current` 写锁，主线程读设置就跟着卡死——托盘、热键、
+    /// 单实例转发全部失效。`current` 的写锁只在落盘成功后换入内存的一瞬间持有。
+    writer: Mutex<()>,
 }
 
 impl SettingsStore {
@@ -49,6 +64,7 @@ impl SettingsStore {
         Ok(Self {
             path: RwLock::new(path),
             current: RwLock::new(current),
+            writer: Mutex::new(()),
         })
     }
 
@@ -60,10 +76,8 @@ impl SettingsStore {
     pub fn reset(&self) -> Result<Settings> {
         let next = default_settings_with_system_locale();
 
-        let path = self.path();
-        write_atomic(&path, &next)?;
-        *self.current.write().expect("settings poisoned") = next.clone();
-        Ok(next)
+        let _writer = crate::core::sync::lock_unpoisoned(&self.writer);
+        self.persist_and_install(next)
     }
 
     /// 用 JSON patch 深度合并到当前设置，落盘后返回新快照。
@@ -75,9 +89,10 @@ impl SettingsStore {
             )));
         }
 
-        let mut guard = self.current.write().expect("settings poisoned");
+        // 写者之间由 `writer` 串行，这里读到的快照在本次写完之前不会被别的写者改动。
+        let _writer = crate::core::sync::lock_unpoisoned(&self.writer);
 
-        let mut merged = serde_json::to_value(&*guard)
+        let mut merged = serde_json::to_value(self.snapshot())
             .context("failed to serialize current settings for merge")?;
         deep_merge(&mut merged, patch);
 
@@ -86,10 +101,7 @@ impl SettingsStore {
 
         validate_settings(&next)?;
 
-        let path = self.path();
-        write_atomic(&path, &next)?;
-        *guard = next.clone();
-        Ok(next)
+        self.persist_and_install(next)
     }
 
     /// 用完整设置文件替换当前设置；覆盖导入专用。
@@ -101,6 +113,13 @@ impl SettingsStore {
 
         validate_settings(&next)?;
 
+        let _writer = crate::core::sync::lock_unpoisoned(&self.writer);
+        self.persist_and_install(next)
+    }
+
+    /// 先落盘、成功后才换入内存，返回新快照。调用方必须持有 `writer` 锁。
+    /// 落盘期间不持 `current` 的锁，读者不受磁盘快慢影响；落盘失败时内存保持原样。
+    fn persist_and_install(&self, next: Settings) -> Result<Settings> {
         let path = self.path();
         write_atomic(&path, &next)?;
         *self.current.write().expect("settings poisoned") = next.clone();
@@ -109,6 +128,7 @@ impl SettingsStore {
 
     /// 数据目录热切换后重新绑定设置文件，并把新路径里的设置加载进内存。
     pub fn rebase(&self, app: &AppHandle) -> Result<Settings> {
+        let _writer = crate::core::sync::lock_unpoisoned(&self.writer);
         let dir = crate::core::paths::config_dir(app)?;
         fs::create_dir_all(&dir).with_context(|| format!("failed to create dir at {dir:?}"))?;
         let path = dir.join(FILENAME);
@@ -147,20 +167,57 @@ fn default_settings_with_system_locale() -> Settings {
 /// 返回 `None` 表示主文件不存在（首次启动），调用方据此走「初始化默认」分支；
 /// 读取过程中遇到 IO/解析错误会打 warn，并返回 `Settings::default()` 包装在 `Some` 里——
 /// 这条路径表示「文件存在但坏了」，不要当成首次启动覆盖系统 locale。
+///
+/// 回落默认值之前先把读不出来的原文件另存一份：默认值很快会被下一次设置写入
+/// （例如启动后几秒的自动检查更新记录时间）原子覆盖回主文件，不留副本的话用户的
+/// 全部配置就此无法找回。
 fn load_from_disk(path: &Path) -> Option<Settings> {
     if !path.exists() {
         return None;
     }
 
-    match fs::read_to_string(path).and_then(|content| {
-        serde_json::from_str::<Settings>(&content)
-            .map_err(|err| std::io::Error::new(std::io::ErrorKind::InvalidData, err))
-    }) {
+    match read_settings_file(path) {
         Ok(settings) => Some(settings),
         Err(err) => {
             log::warn!("settings file {path:?} unreadable, using defaults: {err}");
+            preserve_unreadable_file(path);
             Some(Settings::default())
         }
+    }
+}
+
+/// 读取并解析设置文件。读文件遇到 IO 错误时短暂重试——杀软扫描或同步盘占用造成的
+/// 共享冲突通常几十毫秒内就消失；内容解析失败不重试。
+fn read_settings_file(path: &Path) -> std::io::Result<Settings> {
+    let mut attempt = 0;
+    let content = loop {
+        match fs::read_to_string(path) {
+            Ok(content) => break content,
+            Err(err) if attempt < READ_RETRY_DELAYS.len() => {
+                log::warn!("read settings file {path:?} failed, retrying: {err}");
+                std::thread::sleep(READ_RETRY_DELAYS[attempt]);
+                attempt += 1;
+            }
+            Err(err) => return Err(err),
+        }
+    };
+
+    serde_json::from_str::<Settings>(&content)
+        .map_err(|err| std::io::Error::new(std::io::ErrorKind::InvalidData, err))
+}
+
+/// 把读不出来的设置文件复制成同目录下的 `settings.json.unreadable-<unix 秒>`。
+/// 尽力而为：复制失败只记日志，不影响启动。
+fn preserve_unreadable_file(path: &Path) {
+    let stamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|elapsed| elapsed.as_secs())
+        .unwrap_or_default();
+    let backup = path.with_extension(format!("json.unreadable-{stamp}"));
+
+    match fs::copy(path, &backup) {
+        Ok(_) => log::warn!("kept unreadable settings file as {backup:?}"),
+        Err(err) => log::warn!("keep unreadable settings file as {backup:?} failed: {err}"),
     }
 }
 

@@ -84,27 +84,17 @@ pub async fn delete_unreferenced_apps(pool: &SqlitePool, ids: &[String]) -> Resu
 }
 
 /// upsert：id 已存在则只刷新 name / icon_file / updated_at；不存在则全量插入。
-/// 显式分两路而非依赖 `INSERT OR REPLACE`：后者会重置 created_at 与（潜在的）外键级联。
+/// 单条 `INSERT ... ON CONFLICT DO UPDATE` 保证原子：先 UPDATE 后 INSERT 的两步写法在
+/// 同一应用的两次复制并发入库时会主键冲突，后到的条目因此丢掉来源应用。
+/// 不用 `INSERT OR REPLACE`：它会重置 created_at 与（潜在的）外键级联。
 pub async fn upsert_app(pool: &SqlitePool, app: &ClipboardApp) -> Result<()> {
-    let now = Utc::now();
-    let updated = sqlx::query(
-        "UPDATE clipboard_apps SET name = ?, icon_file = ?, updated_at = ? WHERE id = ?",
-    )
-    .bind(app.name.as_str())
-    .bind(app.icon_file.as_deref())
-    .bind(now)
-    .bind(app.id.as_str())
-    .execute(pool)
-    .await
-    .context("failed to update clipboard app")?;
-
-    if updated.rows_affected() > 0 {
-        return Ok(());
-    }
-
     sqlx::query(
         "INSERT INTO clipboard_apps (id, name, icon_file, platform, created_at, updated_at) \
-         VALUES (?, ?, ?, ?, ?, ?)",
+         VALUES (?, ?, ?, ?, ?, ?) \
+         ON CONFLICT(id) DO UPDATE SET \
+             name = excluded.name, \
+             icon_file = excluded.icon_file, \
+             updated_at = ?",
     )
     .bind(app.id.as_str())
     .bind(app.name.as_str())
@@ -112,9 +102,10 @@ pub async fn upsert_app(pool: &SqlitePool, app: &ClipboardApp) -> Result<()> {
     .bind(app.platform)
     .bind(app.created_at)
     .bind(app.updated_at)
+    .bind(Utc::now())
     .execute(pool)
     .await
-    .context("failed to insert clipboard app")?;
+    .context("failed to upsert clipboard app")?;
     Ok(())
 }
 

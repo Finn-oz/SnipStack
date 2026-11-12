@@ -20,6 +20,13 @@ const DEFAULT_BETA_ENDPOINT: &str =
     "https://github.com/Finn-oz/SnipStack/releases/latest/download/latest.json";
 const DEFAULT_NIGHTLY_ENDPOINT: &str =
     "https://github.com/Finn-oz/SnipStack/releases/latest/download/latest.json";
+/// 更新检查（拉取 latest.json）的总时限。
+const UPDATE_CHECK_TIMEOUT: Duration = Duration::from_secs(30);
+/// 更新请求建立连接的时限，检查与下载共用。
+const UPDATE_CONNECT_TIMEOUT: Duration = Duration::from_secs(15);
+/// 更新请求两次读到数据之间允许的最长间隔，检查与下载共用。
+const UPDATE_READ_TIMEOUT: Duration = Duration::from_secs(60);
+
 const AUTO_CHECK_INITIAL_DELAY_SECONDS: u64 = 8;
 const AUTO_CHECK_SETTINGS_REFRESH_SECONDS: u64 = 60 * 60;
 const AUTO_CHECK_FAILURE_RETRY_SECONDS: u64 = 60 * 60;
@@ -168,10 +175,26 @@ pub async fn check(app: &AppHandle, mode: CheckMode) -> Result<AppUpdateStatus> 
         settings.update.include_beta,
         settings.update.include_nightly,
     )?;
+    let exit_app = app.clone();
     let updater = app
         .updater_builder()
         .endpoints(endpoints)
         .context("failed to configure update endpoints")?
+        // 插件与 reqwest 默认都不设超时：连接建立后对端不再回数据（代理、防火墙挂住）时
+        // 请求永不返回，自动检查循环就此停摆，手动检查与下载也一直转圈。
+        // 检查用总时限；下载体积大，只限制「连接」与「两次读到数据之间」的间隔。
+        .timeout(UPDATE_CHECK_TIMEOUT)
+        .configure_client(|client| {
+            client
+                .connect_timeout(UPDATE_CONNECT_TIMEOUT)
+                .read_timeout(UPDATE_READ_TIMEOUT)
+        })
+        // Windows 上安装更新时插件直接结束进程，不经过 `RunEvent::Exit`：
+        // 窗口几何要在这里刷盘，并留下正常退出标记，否则每次自动更新在日志里都像一次崩溃。
+        .on_before_exit(move || {
+            crate::window::save_all_window_states(&exit_app);
+            log::info!("app exit (clean shutdown, installing update)");
+        })
         .build()
         .context("failed to build updater")?;
 

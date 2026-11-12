@@ -7,6 +7,7 @@ pub fn label(key: Key) -> &'static str {
         Key::DragImageMissing => "图片文件已不存在",
         Key::DragTextEmpty => "文本内容为空",
         Key::ExternalUrlUnsupported => "只能打开 http 或 https 开头的链接",
+        Key::SnipOverlayTimeout => "截屏画面未能显示,已自动取消",
         Key::OcrModelMissing => "OCR 模型文件缺失,请重新安装应用",
         Key::OcrEngineBuildFailed => "无法构建 OCR 识别引擎",
         Key::OcrRecognizeFailed => "文字识别未能完成",

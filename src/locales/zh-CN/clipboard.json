@@ -104,6 +104,7 @@
   },
   "snip": {
     "done": "截屏取字完成,已识别 {{count}} 字",
+    "empty": "未识别到文字",
     "failed": "截屏取字失败:{{message}}"
   },
   "types": {

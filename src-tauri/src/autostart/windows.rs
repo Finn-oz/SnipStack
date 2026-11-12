@@ -105,6 +105,12 @@ fn cleanup_current_user_run_entry(app_name: &str) -> Result<()> {
 
 fn cleanup_windows_run_entries(app_name: &str) -> Result<()> {
     cleanup_current_user_run_entry(app_name)?;
+    // HKLM 的 Run 键对非提权进程只读：带写权限打开这一步本身就会被拒绝（0x80070005），
+    // 哪怕要删的值根本不存在。先只读确认系统级启动项在不在，不在就无事可做——
+    // 否则每次关闭自启（含首次启动的默认同步）都会凭空报错。
+    if !system_run_entry_exists(app_name)? {
+        return Ok(());
+    }
     cleanup_system_run_entry(app_name)
         .map_err(|err| registry_app_error("remove system autostart entry", err))
 }

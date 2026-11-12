@@ -45,7 +45,8 @@ SnipStack 是一款免费开源的 Windows 11 工具,把 TextSniper 式的截屏
 - 无账号、无云同步、无遥测统计。
 - 密码管理器按标准排除格式(`ExcludeClipboardContentFromMonitorProcessing`、
   `Clipboard Viewer Ignore`、`CanIncludeInClipboardHistory=0`)标记的内容
-  不会被记录;疑似密钥的文本(API key、token 等)默认不采集,可自行开启。
+  不会被记录;疑似密钥的文本(API key、token 等)默认会收录,但在列表与预览中
+  脱敏显示,可在「偏好设置 → 采集 → 隐私保护」里关闭收录。
   这些约定是尽力而为,不构成安全边界——请像对待其他本地文件一样对待你的
   历史数据库。
 - 历史条数/保留期可设上限,可随时删除单条或全部记录。

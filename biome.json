@@ -20,6 +20,8 @@
       "**",
       "!**/node_modules",
       "!**/dist",
+      "!.claude",
+      "!docs",
       "!.trellis/.runtime",
       "!src-tauri/target",
       "!src-tauri/.sqlx",

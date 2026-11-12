@@ -104,6 +104,7 @@
   },
   "snip": {
     "done": "Snip done, {{count}} characters recognized",
+    "empty": "No text recognized",
     "failed": "Snip failed: {{message}}"
   },
   "types": {

@@ -12,6 +12,9 @@ import type { ControlProps } from "./types";
 
 const DEFAULT_RETENTION_UNIT: RetentionUnit = "days";
 
+/** 保留期上限（100 年）。再大没有实际意义，只会让后端的日期运算溢出。 */
+const MAX_RETENTION_DAYS = 36500;
+
 interface RetentionControlProps extends ControlProps {
   setting: PreferenceSetting;
   value: RetentionSettingValue;
@@ -75,6 +78,7 @@ const RetentionControl: FC<RetentionControlProps> = (props) => {
     <Space.Compact>
       <InputNumber
         disabled={disabled}
+        max={MAX_RETENTION_DAYS}
         min={0}
         onBlur={handleBlur}
         onChange={handleValueChange}

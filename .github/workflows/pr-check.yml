@@ -1,12 +1,6 @@
 name: PR Check
 
 "on":
-  pull_request:
-    branches:
-      - master
-  push:
-    branches:
-      - master
   workflow_dispatch:
 
 jobs:
@@ -29,6 +23,16 @@ jobs:
           frontend=false
           backend=false
           base_sha="${{ github.event.pull_request.base.sha }}"
+
+          # 手动触发没有 PR base 可比对:空 base 会让 git diff 报错、两个开关
+          # 都停在 false,前后端检查被静默跳过。此时一律全跑。
+          if [[ -z "$base_sha" ]]; then
+            {
+              echo "frontend=true"
+              echo "backend=true"
+            } >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
 
           while IFS= read -r file; do
             case "$file" in

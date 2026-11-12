@@ -181,14 +181,8 @@ fn blake3_hex(bytes: &[u8]) -> String {
 
 /// 写文件（自动建分片目录）；目标已存在则跳过，保证幂等且不重复 IO。
 fn write_if_absent(path: &Path, bytes: &[u8]) -> Result<()> {
-    if path.exists() {
-        return Ok(());
-    }
-    if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent)
-            .with_context(|| format!("failed to create image dir {parent:?}"))?;
-    }
-    std::fs::write(path, bytes).with_context(|| format!("failed to write image {path:?}"))?;
+    crate::core::fs::write_if_absent(path, bytes)
+        .with_context(|| format!("failed to write image {path:?}"))?;
     Ok(())
 }
 

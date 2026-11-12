@@ -414,15 +414,26 @@ pub fn snapshot(app: &AppHandle) -> Vec<LifecycleSnapshot> {
         return Vec::new();
     };
 
+    // 可见性查询必须在取 `states` 锁之前做完：`is_visible` 从非主线程调用时会投递到
+    // 主线程并无限期等回执，而主线程的 hide / show 与空闲计时器也要拿这把锁——
+    // 持锁去等主线程，两边会互相等死。
+    let windows: Vec<(bool, bool)> = descriptors()
+        .iter()
+        .map(|descriptor| {
+            let window = app.get_webview_window(descriptor.label);
+            let visible = window
+                .as_ref()
+                .and_then(|window| window.is_visible().ok())
+                .unwrap_or(false);
+            (window.is_some(), visible)
+        })
+        .collect();
+
     manager.with_states(|states| {
         descriptors()
             .iter()
-            .map(|descriptor| {
-                let window = app.get_webview_window(descriptor.label);
-                let visible = window
-                    .as_ref()
-                    .and_then(|window| window.is_visible().ok())
-                    .unwrap_or(false);
+            .zip(windows)
+            .map(|(descriptor, (has_window, visible))| {
                 let Some(state) = states.get_mut(descriptor.label) else {
                     return LifecycleSnapshot {
                         dirty_owner_count: 0,
@@ -431,7 +442,7 @@ pub fn snapshot(app: &AppHandle) -> Vec<LifecycleSnapshot> {
                         keepalive_count: 0,
                         label: descriptor.label.to_owned(),
                         last_active_ago_ms: 0,
-                        phase: if window.is_some() {
+                        phase: if has_window {
                             LifecyclePhase::Created
                         } else {
                             LifecyclePhase::NotCreated
@@ -453,7 +464,7 @@ pub fn snapshot(app: &AppHandle) -> Vec<LifecycleSnapshot> {
                     last_active_ago_ms: now
                         .saturating_duration_since(state.last_active_at)
                         .as_millis(),
-                    phase: snapshot_phase(state, window.is_some()),
+                    phase: snapshot_phase(state, has_window),
                     retain_policy: descriptor.retain_policy.as_str(),
                     visible,
                 }

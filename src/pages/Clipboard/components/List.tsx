@@ -292,6 +292,12 @@ const List: FC = () => {
   useTauriListen<SnipDonePayload>(TAURI_EVENT.SNIP_DONE, (event) => {
     const { ok, chars, error } = event.payload;
 
+    if (ok && chars === 0) {
+      // 没识别出文字时剪贴板不会被写入，不能当成功提示。
+      getMessageApi().warning(t("snip.empty"));
+      return;
+    }
+
     if (ok) {
       getMessageApi().success(t("snip.done", { count: chars }));
       return;
@@ -322,7 +328,12 @@ const List: FC = () => {
       selectRangeOnOpen !== WINDOW_OPEN_SELECTION_PRESERVE ||
       selectCategoryOnOpen !== WINDOW_OPEN_SELECTION_PRESERVE ||
       selectGroupOnOpen !== WINDOW_OPEN_SELECTION_PRESERVE;
-    if (!scrollToTopOnOpen && !shouldResetSelection) return;
+    if (!scrollToTopOnOpen && !shouldResetSelection) {
+      // 隐藏期间到达的更新只记了 pending。不回顶也不重置筛选时没有别的路径会消费它：
+      // 用户本来就停在顶部，回顶事件不会再触发，新复制的条目就一直不出现。
+      consumeDeferredReloadAtTop();
+      return;
+    }
 
     closePreview("windowOpenReset");
 
@@ -343,7 +354,10 @@ const List: FC = () => {
       clipboardViewState.groupId = openGroupId;
     }
 
-    if (!scrollToTopOnOpen) return;
+    if (!scrollToTopOnOpen) {
+      consumeDeferredReloadAtTop();
+      return;
+    }
 
     setSelectedId(null);
     virtuosoRef.current?.scrollToIndex({ behavior: "auto", index: 0 });

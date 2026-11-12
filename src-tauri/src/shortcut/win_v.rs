@@ -72,9 +72,16 @@ fn enable(app: &AppHandle) {
         while GetMessageW(&mut msg, null_mut(), 0, 0) > 0 {}
 
         UnhookWindowsHookEx(hook);
-        *HOOK_THREAD_ID
-            .lock()
-            .expect("win_v hook thread id poisoned") = None;
+        // 只清自己登记的 id：关掉后立刻重开时，新钩子线程可能已经把自己的 id 写进来，
+        // 旧线程迟到的清空会把它抹掉——新钩子从此摘不掉，下次开启还会再起一条线程。
+        {
+            let mut thread_id = HOOK_THREAD_ID
+                .lock()
+                .expect("win_v hook thread id poisoned");
+            if *thread_id == Some(GetCurrentThreadId()) {
+                *thread_id = None;
+            }
+        }
         V_CONSUMED.store(false, Ordering::Relaxed);
     });
 }

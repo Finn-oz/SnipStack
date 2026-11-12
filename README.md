@@ -53,9 +53,11 @@ text from the screen. Both hotkeys are configurable in Preferences.
 - Content copied from password managers that mark it with the standard
   exclusion formats (`ExcludeClipboardContentFromMonitorProcessing`,
   `Clipboard Viewer Ignore`, `CanIncludeInClipboardHistory=0`) is never
-  recorded. Text that looks like a secret (API keys, tokens) is skipped
-  unless you opt in. These conventions are best-effort, not a security
-  boundary — treat your history database like any other local file.
+  recorded. Text that looks like a secret (API keys, tokens) is saved by
+  default but shown redacted in the list and preview; you can turn saving
+  off under Preferences → Capture → Privacy. These conventions are
+  best-effort, not a security boundary — treat your history database like
+  any other local file.
 - You can cap history size/retention, and delete individual items or
   everything at any time from the app.
 

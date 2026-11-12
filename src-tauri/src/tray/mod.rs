@@ -259,7 +259,9 @@ fn handle_menu_event(app: &AppHandle, id: &str) {
                 log::error!("tray open update window failed: {err:?}");
             }
         }
-        MENU_RELAUNCH => app.restart(),
+        // 不用 `app.restart()`：在主线程上它直接重启进程，跳过退出事件——窗口几何不刷盘、
+        // 日志没有正常退出标记（会被误读成崩溃）、单实例锁也不走正常释放。
+        MENU_RELAUNCH => app.request_restart(),
         MENU_EXIT => app.exit(0),
         _ => {}
     }

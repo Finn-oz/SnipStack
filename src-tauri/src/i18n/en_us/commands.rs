@@ -7,6 +7,7 @@ pub fn label(key: Key) -> &'static str {
         Key::DragImageMissing => "The image file no longer exists",
         Key::DragTextEmpty => "Text content is empty",
         Key::ExternalUrlUnsupported => "Only links starting with http or https can be opened",
+        Key::SnipOverlayTimeout => "The capture overlay did not appear and was cancelled",
         Key::OcrModelMissing => "OCR model files are missing, please reinstall the app",
         Key::OcrEngineBuildFailed => "Could not build the OCR engine",
         Key::OcrRecognizeFailed => "Text recognition could not complete",
