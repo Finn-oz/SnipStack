@@ -14,6 +14,7 @@
 
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::Mutex;
 
 use anyhow::Context;
 use chrono::{DateTime, Utc};
@@ -120,73 +121,102 @@ pub fn storage_location(app: &AppHandle) -> Result<StorageLocation> {
     })
 }
 
-/// `<data_root>`：当前环境所有持久化位置的根；其下按语义拆分为 db、resources、
-/// config 与 state。真实根由 bootstrap manifest 决定。
-pub fn app_data_dir(app: &AppHandle) -> Result<PathBuf> {
-    let bootstrap = bootstrap_dir(app)?;
-    let default = default_data_dir(app)?;
-    let manifest_path = storage_manifest_path(&bootstrap);
+/// 本进程已解析出的数据根，解析一次后在整个进程生命周期内保持不变（除非显式切换）。
+///
+/// 不缓存的话每次取路径都重新读 manifest、重新探测目录：自定义目录所在的磁盘若在
+/// 运行中途才挂载上来，前一刻数据库开在默认目录、后一刻图片却写进自定义目录，
+/// 同一次运行的数据被劈成两半。
+static RESOLVED_DATA_DIR: Mutex<Option<PathBuf>> = Mutex::new(None);
 
-    fs::create_dir_all(&bootstrap)
+/// `<data_root>`：当前环境所有持久化位置的根；其下按语义拆分为 db、resources、
+/// config 与 state。真实根由 bootstrap manifest 决定，首次调用时解析并缓存。
+pub fn app_data_dir(app: &AppHandle) -> Result<PathBuf> {
+    let mut resolved = crate::core::sync::lock_unpoisoned(&RESOLVED_DATA_DIR);
+    if let Some(dir) = resolved.as_ref() {
+        return Ok(dir.clone());
+    }
+
+    let dir = resolve_data_dir(&bootstrap_dir(app)?, &default_data_dir(app)?)?;
+    *resolved = Some(dir.clone());
+    Ok(dir)
+}
+
+/// 按 bootstrap manifest 解析真实数据根；指向的自定义目录用不了时回落默认目录。
+///
+/// 回落**只对本次运行生效，不改写 manifest**。自定义目录暂时不可达是常态而非损坏：
+/// U 盘没插、网络盘或晚挂载的分区在开机自启时还没就绪、identity 文件被杀软短暂锁住。
+/// 若在这里把指向永久改回默认目录，用户下次只会看到一个空历史；他再去偏好里重选
+/// 原目录时，迁移流程会用默认目录里几乎为空的数据去替换原目录的全部历史。
+/// 保留指向则下次启动目录可达时自动恢复。manifest 只由首次启动和显式切换写入。
+fn resolve_data_dir(bootstrap: &Path, default: &Path) -> Result<PathBuf> {
+    let manifest_path = storage_manifest_path(bootstrap);
+
+    fs::create_dir_all(bootstrap)
         .with_context(|| format!("failed to create bootstrap dir at {bootstrap:?}"))?;
 
     let manifest = match read_storage_manifest(&manifest_path) {
         Ok(Some(manifest)) => manifest,
         Ok(None) => {
-            let manifest = storage_manifest(default.clone());
-            write_storage_manifest(&manifest_path, &manifest)?;
-            manifest
+            write_storage_manifest(&manifest_path, &storage_manifest(default.to_path_buf()))?;
+            return Ok(default.to_path_buf());
         }
         Err(err) => {
-            log::warn!("storage manifest unreadable, using default data dir: {err}");
-            let manifest = storage_manifest(default.clone());
-            write_storage_manifest(&manifest_path, &manifest)?;
-            manifest
+            log::warn!("storage manifest unreadable, using default data dir this run: {err}");
+            return Ok(default.to_path_buf());
         }
     };
 
     if manifest.environment != env_dir() || manifest.version != STORAGE_MANIFEST_VERSION {
-        log::warn!("storage manifest metadata mismatch, using default data dir");
-        let manifest = storage_manifest(default.clone());
-        write_storage_manifest(&manifest_path, &manifest)?;
-        return Ok(default);
+        log::warn!("storage manifest metadata mismatch, using default data dir this run");
+        return Ok(default.to_path_buf());
+    }
+
+    if manifest.data_dir == default {
+        return Ok(manifest.data_dir);
     }
 
     if !manifest.data_dir.exists() {
         log::warn!(
-            "storage data dir {:?} is missing, falling back to default data dir",
+            "storage data dir {:?} is unavailable, using default data dir this run",
             manifest.data_dir
         );
-        let manifest = storage_manifest(default.clone());
-        write_storage_manifest(&manifest_path, &manifest)?;
-        return Ok(default);
+        return Ok(default.to_path_buf());
     }
 
-    if manifest.data_dir != default {
-        match has_valid_storage_identity(&manifest.data_dir) {
-            Ok(true) => {}
-            Ok(false) => {
-                log::warn!(
-                    "storage data dir {:?} identity mismatch, falling back to default data dir",
-                    manifest.data_dir
-                );
-                let manifest = storage_manifest(default.clone());
-                write_storage_manifest(&manifest_path, &manifest)?;
-                return Ok(default);
-            }
-            Err(err) => {
-                log::warn!(
-                    "storage data dir {:?} identity unreadable, falling back to default data dir: {err}",
-                    manifest.data_dir
-                );
-                let manifest = storage_manifest(default.clone());
-                write_storage_manifest(&manifest_path, &manifest)?;
-                return Ok(default);
-            }
+    match has_valid_storage_identity(&manifest.data_dir) {
+        Ok(true) => Ok(manifest.data_dir),
+        Ok(false) => {
+            log::warn!(
+                "storage data dir {:?} identity mismatch, using default data dir this run",
+                manifest.data_dir
+            );
+            Ok(default.to_path_buf())
+        }
+        Err(err) => {
+            log::warn!(
+                "storage data dir {:?} identity unreadable, using default data dir this run: {err}",
+                manifest.data_dir
+            );
+            Ok(default.to_path_buf())
         }
     }
+}
 
-    Ok(manifest.data_dir)
+/// manifest 当前指向的数据目录；manifest 不存在、读不出或不属于当前环境时为 `None`。
+/// 与 [`app_data_dir`] 不同：本次运行回落到默认目录时，这里仍是用户配置的那个目录。
+pub fn configured_data_dir(app: &AppHandle) -> Option<PathBuf> {
+    let bootstrap = bootstrap_dir(app).ok()?;
+    let manifest = read_storage_manifest(&storage_manifest_path(&bootstrap)).ok()??;
+    if manifest.environment != env_dir() || manifest.version != STORAGE_MANIFEST_VERSION {
+        return None;
+    }
+
+    Some(manifest.data_dir)
+}
+
+/// 目录是否已经是一份可直接使用的 SnipStack 数据：identity 有效且已有数据库目录。
+pub fn is_populated_data_dir(data_dir: &Path) -> bool {
+    matches!(has_valid_storage_identity(data_dir), Ok(true)) && data_dir.join(DB_DIR).is_dir()
 }
 
 /// 将当前真实数据根切换到指定目录。调用方负责在写入前完成数据迁移。
@@ -198,8 +228,31 @@ pub fn set_app_data_dir(app: &AppHandle, data_dir: PathBuf) -> Result<()> {
     write_storage_identity(&data_dir)?;
     write_storage_manifest(
         &storage_manifest_path(&bootstrap),
-        &storage_manifest(data_dir),
-    )
+        &storage_manifest(data_dir.clone()),
+    )?;
+    *crate::core::sync::lock_unpoisoned(&RESOLVED_DATA_DIR) = Some(data_dir);
+    Ok(())
+}
+
+/// 切换失败后的回退：本次运行继续使用 `session_dir`，manifest 还原为切换前的指向
+/// `configured`（切换前读不到指向时就指向 `session_dir`）。
+///
+/// 两者在回落运行里不是同一个目录——manifest 指向暂时不可达的自定义目录，而本次运行
+/// 用的是默认目录——所以不能简单地把 manifest 写成当前目录，那会丢掉原来的指向。
+/// 只写 manifest、不写 identity：被还原的指向可能此刻就不可达。
+pub fn restore_data_dir(
+    app: &AppHandle,
+    configured: Option<PathBuf>,
+    session_dir: PathBuf,
+) -> Result<()> {
+    let bootstrap = bootstrap_dir(app)?;
+    let pointer = configured.unwrap_or_else(|| session_dir.clone());
+    write_storage_manifest(
+        &storage_manifest_path(&bootstrap),
+        &storage_manifest(pointer),
+    )?;
+    *crate::core::sync::lock_unpoisoned(&RESOLVED_DATA_DIR) = Some(session_dir);
+    Ok(())
 }
 
 /// 写入真实数据根 identity manifest，供迁移目标目录校验。
@@ -341,6 +394,103 @@ mod tests {
         fn drop(&mut self) {
             fs::remove_dir_all(&self.0).ok();
         }
+    }
+
+    fn write_manifest_pointing_to(bootstrap: &Path, data_dir: &Path) -> String {
+        let path = storage_manifest_path(bootstrap);
+        write_storage_manifest(&path, &storage_manifest(data_dir.to_path_buf())).unwrap();
+        fs::read_to_string(path).unwrap()
+    }
+
+    #[test]
+    fn first_run_writes_manifest_pointing_to_default() {
+        let temp = TempDir::new();
+        let bootstrap = temp.path().join("bootstrap");
+
+        let resolved = resolve_data_dir(&bootstrap, &bootstrap).unwrap();
+
+        assert_eq!(resolved, bootstrap);
+        let manifest = read_storage_manifest(&storage_manifest_path(&bootstrap))
+            .unwrap()
+            .unwrap();
+        assert_eq!(manifest.data_dir, bootstrap);
+    }
+
+    #[test]
+    fn custom_data_dir_with_identity_is_used() {
+        let temp = TempDir::new();
+        let bootstrap = temp.path().join("bootstrap");
+        let custom = temp.path().join("custom");
+        write_storage_identity(&custom).unwrap();
+        write_manifest_pointing_to(&bootstrap, &custom);
+
+        assert_eq!(resolve_data_dir(&bootstrap, &bootstrap).unwrap(), custom);
+    }
+
+    /// 自定义目录暂时不可达（盘没挂载）时本次运行回落默认目录，但 manifest 的指向
+    /// 必须原样保留：目录回来后下次启动要能自动恢复。
+    #[test]
+    fn unavailable_custom_data_dir_falls_back_without_rewriting_manifest() {
+        let temp = TempDir::new();
+        let bootstrap = temp.path().join("bootstrap");
+        let custom = temp.path().join("not-mounted").join("custom");
+        let before = write_manifest_pointing_to(&bootstrap, &custom);
+
+        assert_eq!(resolve_data_dir(&bootstrap, &bootstrap).unwrap(), bootstrap);
+        assert_eq!(
+            fs::read_to_string(storage_manifest_path(&bootstrap)).unwrap(),
+            before
+        );
+
+        // 目录恢复可达后，同一份 manifest 重新解析出自定义目录。
+        write_storage_identity(&custom).unwrap();
+        assert_eq!(resolve_data_dir(&bootstrap, &bootstrap).unwrap(), custom);
+    }
+
+    #[test]
+    fn custom_data_dir_without_identity_falls_back_without_rewriting_manifest() {
+        let temp = TempDir::new();
+        let bootstrap = temp.path().join("bootstrap");
+        let custom = temp.path().join("custom");
+        fs::create_dir_all(&custom).unwrap();
+        let before = write_manifest_pointing_to(&bootstrap, &custom);
+
+        assert_eq!(resolve_data_dir(&bootstrap, &bootstrap).unwrap(), bootstrap);
+        assert_eq!(
+            fs::read_to_string(storage_manifest_path(&bootstrap)).unwrap(),
+            before
+        );
+    }
+
+    #[test]
+    fn unreadable_manifest_falls_back_without_rewriting_it() {
+        let temp = TempDir::new();
+        let bootstrap = temp.path().join("bootstrap");
+        fs::create_dir_all(&bootstrap).unwrap();
+        fs::write(storage_manifest_path(&bootstrap), "{ not json").unwrap();
+
+        assert_eq!(resolve_data_dir(&bootstrap, &bootstrap).unwrap(), bootstrap);
+        assert_eq!(
+            fs::read_to_string(storage_manifest_path(&bootstrap)).unwrap(),
+            "{ not json"
+        );
+    }
+
+    #[test]
+    fn populated_data_dir_needs_identity_and_database_dir() {
+        let temp = TempDir::new();
+        let empty = temp.path().join("empty");
+        fs::create_dir_all(&empty).unwrap();
+        let identity_only = temp.path().join("identity-only");
+        write_storage_identity(&identity_only).unwrap();
+        let populated = temp.path().join("populated");
+        write_storage_identity(&populated).unwrap();
+        fs::create_dir_all(populated.join(DB_DIR)).unwrap();
+
+        assert!(!is_populated_data_dir(&temp.path().join("missing")));
+        assert!(!is_populated_data_dir(&empty));
+        assert!(!is_populated_data_dir(&identity_only));
+        assert!(is_populated_data_dir(&populated));
     }
 
     #[test]

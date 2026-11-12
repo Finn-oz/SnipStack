@@ -24,6 +24,12 @@ impl DatabaseState {
     }
 
     /// Closes the active pool, runs replacement work, and installs the new pool atomically.
+    ///
+    /// Contract for `replace`: it must always hand back a usable pool. When the replacement
+    /// work fails, the closure is responsible for restoring the previous data and reopening it,
+    /// returning `Ok(old_pool)` and reporting the import/switch error through its own side
+    /// channel. Returning `Err` means not even the previous database could be reopened; the
+    /// closed pool then stays installed and every later query fails until restart.
     pub async fn close_and_replace<F, Fut>(&self, replace: F) -> Result<()>
     where
         F: FnOnce() -> Fut,

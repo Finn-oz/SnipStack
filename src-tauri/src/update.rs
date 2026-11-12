@@ -102,6 +102,23 @@ impl UpdateState {
         });
     }
 
+    /// 记录一次检查发现的更新。与当前待安装的是同一版本时保留已下载的安装包：
+    /// 更新窗口每次显示都会重新检查，不保留的话已经下好的包被丢掉，界面仍显示
+    /// 「已下载」，点安装却报没有可安装的更新。
+    fn set_checked_update(&self, update: TauriUpdate, metadata: UpdateMetadata) {
+        self.with_current(|current| {
+            let bytes = current
+                .take()
+                .filter(|pending| pending.metadata.version == metadata.version)
+                .and_then(|pending| pending.bytes);
+            *current = Some(PendingUpdate {
+                update,
+                metadata,
+                bytes,
+            });
+        });
+    }
+
     fn mark_downloaded(&self, version: &str, bytes: Vec<u8>) -> Result<UpdateMetadata> {
         self.with_current(|current| {
             let pending = current
@@ -215,11 +232,7 @@ pub async fn check(app: &AppHandle, mode: CheckMode) -> Result<AppUpdateStatus> 
         if skipped {
             state.set_update(None);
         } else {
-            state.set_update(Some(PendingUpdate {
-                update,
-                metadata,
-                bytes: None,
-            }));
+            state.set_checked_update(update, metadata);
         }
     } else {
         state.set_update(None);

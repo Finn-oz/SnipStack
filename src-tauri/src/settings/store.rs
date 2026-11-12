@@ -104,16 +104,16 @@ impl SettingsStore {
         self.persist_and_install(next)
     }
 
-    /// 用完整设置文件替换当前设置；覆盖导入专用。
-    pub fn replace_from_file(&self, path: &Path) -> Result<Settings> {
-        let content =
-            fs::read_to_string(path).with_context(|| format!("failed to read {path:?}"))?;
-        let next: Settings = serde_json::from_str(&content)
-            .map_err(|err| AppError::Other(anyhow::anyhow!("invalid settings file: {err}")))?;
+    /// 用 `build` 基于当前快照生成的完整设置整体替换当前设置；覆盖导入专用。
+    ///
+    /// `build` 在 `writer` 锁内拿到当前快照，需要沿用本机字段时读到的是最新值，
+    /// 不会被并发的后台写入（如自动检查更新记录时间）夹在中间覆盖。
+    pub fn replace_with(&self, build: impl FnOnce(&Settings) -> Settings) -> Result<Settings> {
+        let _writer = crate::core::sync::lock_unpoisoned(&self.writer);
 
+        let next = build(&self.snapshot());
         validate_settings(&next)?;
 
-        let _writer = crate::core::sync::lock_unpoisoned(&self.writer);
         self.persist_and_install(next)
     }
 
@@ -422,6 +422,58 @@ mod tests {
             parsed.clipboard.window.select_group_on_open,
             crate::settings::WINDOW_OPEN_SELECTION_PRESERVE
         );
+    }
+
+    fn store_at(path: PathBuf, current: Settings) -> SettingsStore {
+        SettingsStore {
+            path: RwLock::new(path),
+            current: RwLock::new(current),
+            writer: Mutex::new(()),
+        }
+    }
+
+    #[test]
+    fn replace_with_builds_from_current_snapshot_and_persists() {
+        let temp = tempfile::tempdir().unwrap();
+        let path = temp.path().join(FILENAME);
+        let mut current = Settings::default();
+        current.update.last_checked_at = Some("2026-11-01T00:00:00Z".into());
+        let store = store_at(path.clone(), current);
+
+        let next = store
+            .replace_with(|current| {
+                let mut next = Settings::default();
+                next.general.auto_start = true;
+                next.update.last_checked_at = current.update.last_checked_at.clone();
+                next
+            })
+            .unwrap();
+
+        assert!(next.general.auto_start);
+        assert_eq!(
+            next.update.last_checked_at.as_deref(),
+            Some("2026-11-01T00:00:00Z")
+        );
+        assert_eq!(store.snapshot(), next);
+        let on_disk: Settings = serde_json::from_str(&fs::read_to_string(&path).unwrap()).unwrap();
+        assert_eq!(on_disk, next);
+    }
+
+    #[test]
+    fn replace_with_rejects_invalid_settings_and_keeps_current() {
+        let temp = tempfile::tempdir().unwrap();
+        let path = temp.path().join(FILENAME);
+        let store = store_at(path.clone(), Settings::default());
+
+        let result = store.replace_with(|_| {
+            let mut next = Settings::default();
+            next.shortcuts.snip = next.shortcuts.open_clipboard.clone();
+            next
+        });
+
+        assert!(result.is_err());
+        assert_eq!(store.snapshot(), Settings::default());
+        assert!(!path.exists(), "invalid settings must not reach disk");
     }
 
     #[test]

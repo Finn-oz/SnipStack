@@ -16,6 +16,7 @@ use chacha20poly1305::{XChaCha20Poly1305, XNonce};
 use chrono::{DateTime, Utc};
 use rand::RngCore;
 use serde::{Deserialize, Serialize};
+use sqlx::migrate::Migrator;
 use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions};
 use sqlx::{Sqlite, SqlitePool};
 use tauri::{AppHandle, Emitter, Manager};
@@ -46,6 +47,45 @@ const DB_ARCHIVE_DIR: &str = "db";
 const RESOURCES_ARCHIVE_DIR: &str = "resources";
 const CONFIG_ARCHIVE_DIR: &str = "config";
 const MANIFEST_FILENAME: &str = "manifest.json";
+/// 启动时检查数据根下有没有残留的覆盖导入回滚副本，有就在日志里醒目记一条。
+///
+/// 覆盖导入中途进程被杀或断电时，导入前的原数据留在回滚目录里，而下次启动会照常
+/// 建出一个空库——用户只看到历史没了。这条日志是排查时找回数据的线索；
+/// 不自动挪回：此刻现场可能是「新库已就位」的半成品，替用户选哪一份都可能选错。
+pub fn log_rollback_leftovers(app: &AppHandle) {
+    let Ok(root) = crate::core::paths::app_data_dir(app) else {
+        return;
+    };
+    let Ok(entries) = fs::read_dir(&root) else {
+        return;
+    };
+
+    for entry in entries.flatten() {
+        let name = entry.file_name();
+        if name
+            .to_str()
+            .is_some_and(|name| name.starts_with(ROLLBACK_DIR_PREFIX))
+        {
+            log::error!(
+                "interrupted backup import left pre-import data at {:?}; it is not in use",
+                entry.path()
+            );
+        }
+    }
+}
+
+/// 覆盖导入时存放导入前原数据的回滚目录名前缀（建在数据根下）。
+/// 数据目录迁移据此识别残留的回滚副本，避免把它连同旧目录一起删掉。
+pub(crate) const ROLLBACK_DIR_PREFIX: &str = ".import-rollback-";
+const INVALID_BACKUP_DB_MESSAGE: &str = "备份中的历史数据库无效或已损坏";
+const RESTORE_RETRY_DELAYS: [std::time::Duration; 3] = [
+    std::time::Duration::from_millis(100),
+    std::time::Duration::from_millis(250),
+    std::time::Duration::from_millis(500),
+];
+
+/// 本版本内置的 migration 集合，用于导入前判断备份库能否被本版本打开。
+static MIGRATOR: Migrator = sqlx::migrate!("./migrations");
 
 /// 偏好窗口被销毁时暂存的待处理备份接收事件。
 ///
@@ -262,13 +302,19 @@ pub async fn import_history_backup(
     let payload = read_backup_payload(&path, input.password.as_deref())?;
     let temp = extract_payload_zip(&payload)?;
     validate_extracted_payload(temp.path())?;
+    validate_backup_database(&temp.path().join(DB_ARCHIVE_DIR).join(DB_FILENAME)).await?;
+    let backup_settings =
+        read_json_file(&temp.path().join(CONFIG_ARCHIVE_DIR).join(SETTINGS_FILENAME))?;
 
     match options.strategy {
         BackupImportStrategy::Merge => {
             let pool = db.pool().await;
-            merge_import(app, &pool, temp.path(), &options).await
+            merge_import(app, &pool, temp.path(), backup_settings, &options).await
         }
-        BackupImportStrategy::Overwrite => overwrite_import(app, db, temp.path(), &options).await,
+        BackupImportStrategy::Overwrite => {
+            let backup_settings = parse_backup_settings(backup_settings)?;
+            overwrite_import(app, db, temp.path(), backup_settings, &options).await
+        }
     }
 }
 
@@ -958,21 +1004,24 @@ async fn merge_import(
     app: &AppHandle,
     pool: &SqlitePool,
     root: &Path,
+    mut settings_patch: serde_json::Value,
     _options: &ImportHistoryBackupOptions,
 ) -> Result<ImportHistoryBackupResult> {
     let db_path = root.join(DB_ARCHIVE_DIR).join(DB_FILENAME);
     let backup_pool = open_backup_db(&db_path).await?;
-    let outcome = merge_history(pool, &backup_pool).await?;
+    let merged = merge_history(pool, &backup_pool).await;
+    backup_pool.close().await;
+    let outcome = merged?;
     let resources = root.join(RESOURCES_ARCHIVE_DIR);
     let imported_resources =
         copy_dir_missing(&resources, &crate::core::paths::resources_dir(app)?)?;
     emit_clipboard_imported(app);
 
-    let settings_path = root.join(CONFIG_ARCHIVE_DIR).join(SETTINGS_FILENAME);
-    let patch = read_json_file(&settings_path)?;
+    strip_machine_local_settings(&mut settings_patch);
     let next = app
         .state::<crate::settings::SettingsStore>()
-        .update(patch)?;
+        .update(settings_patch)?;
+    crate::commands::apply_settings_side_effects(app, &next);
     emit_settings_updated(app, &next);
 
     Ok(ImportHistoryBackupResult {
@@ -985,38 +1034,69 @@ async fn merge_import(
     })
 }
 
+/// 覆盖导入：主库、resources、设置三者要么全部换成备份内容，要么全部回到导入前。
+///
+/// 现场数据先 rename 进同卷回滚目录，新内容就位、`db::init` 成功、设置落盘后才删回滚目录；
+/// 任一步失败都把回滚目录里的原件挪回并重开旧库，保证 `DatabaseState` 里始终是可用连接池。
 async fn overwrite_import(
     app: &AppHandle,
     db: &crate::db::DatabaseState,
     root: &Path,
+    backup_settings: crate::settings::Settings,
     _options: &ImportHistoryBackupOptions,
 ) -> Result<ImportHistoryBackupResult> {
     let _pause_guard = pause_watcher(app);
 
+    let live = LiveDataPaths {
+        db_path: crate::db::db_path(app)?,
+        resources_dir: crate::core::paths::resources_dir(app)?,
+    };
     let db_src = root.join(DB_ARCHIVE_DIR).join(DB_FILENAME);
-    let app_for_db = app.clone();
-    db.close_and_replace(|| {
-        let app = app_for_db.clone();
-        let db_src = db_src.clone();
-        async move {
-            replace_live_database(&app, &db_src)?;
-            crate::db::init(&app).await
-        }
-    })
-    .await?;
-
     let resources_src = root.join(RESOURCES_ARCHIVE_DIR);
-    if resources_src.exists() {
-        replace_dir(&resources_src, &crate::core::paths::resources_dir(app)?)?;
-    }
+    let resources_src = resources_src.exists().then_some(resources_src);
+    let store = app.state::<crate::settings::SettingsStore>();
+    let store = store.inner();
+
+    let mut imported = None;
+    let imported_slot = &mut imported;
+    let live_ref = &live;
+    let db_src_ref = db_src.as_path();
+    let resources_src_ref = resources_src.as_deref();
+    let replaced = db
+        .close_and_replace(move || async move {
+            let swap = swap_live_data(
+                live_ref,
+                db_src_ref,
+                resources_src_ref,
+                || crate::db::init(app),
+                || {
+                    store.replace_with(|current| {
+                        overlay_machine_local_settings(backup_settings, current)
+                    })
+                },
+            )
+            .await;
+            *imported_slot = Some(swap.result);
+            swap.pool
+        })
+        .await;
+    // 导入自身的错误优先上报：它带着「原数据保存在哪里」，连旧库都重开不了时
+    // 也不能被连接池的错误盖掉。
+    let next = match imported {
+        Some(Err(err)) => return Err(err),
+        Some(Ok(next)) => {
+            replaced?;
+            next
+        }
+        None => {
+            replaced?;
+            return app_error("备份导入未执行");
+        }
+    };
 
     refresh_apps_registry(app).await;
     emit_clipboard_imported(app);
-
-    let settings_path = root.join(CONFIG_ARCHIVE_DIR).join(SETTINGS_FILENAME);
-    let next = app
-        .state::<crate::settings::SettingsStore>()
-        .replace_from_file(&settings_path)?;
+    crate::commands::apply_settings_side_effects(app, &next);
     emit_settings_updated(app, &next);
 
     Ok(ImportHistoryBackupResult {
@@ -1027,6 +1107,384 @@ async fn overwrite_import(
         imported_settings: true,
         requires_restart: false,
     })
+}
+
+/// 覆盖导入涉及的现场路径。db 与 resources 都在数据根目录下，回滚目录建在 resources 的父目录，
+/// 保证挪动走同卷 rename 而不是再拷一份。
+#[derive(Debug, Clone)]
+struct LiveDataPaths {
+    db_path: PathBuf,
+    resources_dir: PathBuf,
+}
+
+impl LiveDataPaths {
+    /// 主库连同 WAL sidecar；三者必须一起挪动才能保持一致。
+    fn db_files(&self) -> [PathBuf; 3] {
+        let base = self.db_path.as_os_str();
+        let with_suffix = |suffix: &str| {
+            let mut name = base.to_os_string();
+            name.push(suffix);
+            PathBuf::from(name)
+        };
+
+        [
+            self.db_path.clone(),
+            with_suffix("-wal"),
+            with_suffix("-shm"),
+        ]
+    }
+
+    fn rollback_parent(&self) -> Result<&Path> {
+        self.resources_dir
+            .parent()
+            .ok_or_else(|| AppError::Other(anyhow!("resources dir has no parent")))
+    }
+}
+
+/// 覆盖导入的回滚现场：记录被挪进回滚目录的原件与已放入新内容的现场路径。
+///
+/// `restore` 幂等，可在 Windows 句柄迟迟不释放时重试；回滚目录里还有原件时绝不自动删除，
+/// drop 时会保留目录并记日志，防止用户唯一的数据随临时目录一起消失。
+struct OverwriteRollback {
+    dir: Option<TempDir>,
+    /// (现场路径, 回滚目录内路径)，按挪出顺序记录，按倒序挪回。
+    moved: Vec<(PathBuf, PathBuf)>,
+    /// 可能已放入新内容、恢复前要先清掉的现场路径。
+    placed: Vec<PathBuf>,
+}
+
+impl OverwriteRollback {
+    /// 在数据根目录下新建唯一命名的回滚目录；历史残留目录名字不同，不影响本次导入。
+    fn create(live: &LiveDataPaths) -> Result<Self> {
+        let parent = live.rollback_parent()?;
+        fs::create_dir_all(parent).with_context(|| format!("failed to create {parent:?}"))?;
+        let dir = tempfile::Builder::new()
+            .prefix(ROLLBACK_DIR_PREFIX)
+            .tempdir_in(parent)
+            .with_context(|| format!("failed to create rollback dir under {parent:?}"))?;
+
+        Ok(Self {
+            dir: Some(dir),
+            moved: Vec::new(),
+            placed: Vec::new(),
+        })
+    }
+
+    fn dir_path(&self) -> Result<PathBuf> {
+        self.dir
+            .as_ref()
+            .map(|dir| dir.path().to_path_buf())
+            .ok_or_else(|| AppError::Other(anyhow!("rollback dir already released")))
+    }
+
+    /// 把现场主库（含 sidecar）与需要替换的 resources 挪进回滚目录，再放入备份内容。
+    /// 备份里没有 resources 目录时保留现有 resources，与此前行为一致。
+    fn swap_in(
+        &mut self,
+        live: &LiveDataPaths,
+        db_src: &Path,
+        resources_src: Option<&Path>,
+    ) -> Result<()> {
+        let rollback_dir = self.dir_path()?;
+        let mut targets = live.db_files().to_vec();
+        if resources_src.is_some() {
+            targets.push(live.resources_dir.clone());
+        }
+
+        for live_path in targets {
+            if !path_exists(&live_path)? {
+                continue;
+            }
+            let name = live_path
+                .file_name()
+                .ok_or_else(|| anyhow!("live path {live_path:?} has no file name"))?;
+            let held = rollback_dir.join(name);
+            fs::rename(&live_path, &held)
+                .with_context(|| format!("failed to move {live_path:?} to {held:?}"))?;
+            self.moved.push((live_path, held));
+        }
+
+        self.placed.extend(live.db_files());
+        copy_file_to(db_src, &live.db_path)?;
+
+        if let Some(src) = resources_src {
+            self.placed.push(live.resources_dir.clone());
+            copy_dir_all(src, &live.resources_dir)?;
+        }
+
+        Ok(())
+    }
+
+    /// 清掉放入的新内容后把原件挪回现场。每完成一项就出栈，重试时不会误删已恢复的原件。
+    fn restore(&mut self) -> Result<()> {
+        while let Some(path) = self.placed.last() {
+            remove_path_if_exists(path)?;
+            self.placed.pop();
+        }
+
+        while let Some((live_path, held)) = self.moved.last() {
+            fs::rename(held, live_path)
+                .with_context(|| format!("failed to move {held:?} back to {live_path:?}"))?;
+            self.moved.pop();
+        }
+
+        Ok(())
+    }
+
+    /// 导入已完整生效，删除回滚目录；删不掉只是残留占盘，记日志即可。
+    fn commit(mut self) {
+        self.moved.clear();
+        if let Some(dir) = self.dir.take() {
+            if let Err(err) = dir.close() {
+                log::warn!("remove backup import rollback dir failed: {err}");
+            }
+        }
+    }
+
+    /// 放弃自动删除回滚目录并返回其路径，供错误文案告知用户原数据所在位置。
+    fn keep(&mut self) -> Option<PathBuf> {
+        self.dir.take().map(TempDir::keep)
+    }
+}
+
+impl Drop for OverwriteRollback {
+    fn drop(&mut self) {
+        if self.moved.is_empty() {
+            return;
+        }
+        if let Some(path) = self.keep() {
+            log::error!("backup import rollback dir kept with original data at {path:?}");
+        }
+    }
+}
+
+/// 覆盖导入一次换装的结果：`pool` 是应装进 `DatabaseState` 的连接池（成功时为新库，
+/// 失败时为恢复后的旧库），`result` 是导入本身的结果。
+struct SwapOutcome<T> {
+    pool: Result<SqlitePool>,
+    result: Result<T>,
+}
+
+/// 覆盖导入的核心事务，只依赖路径与注入的打开/收尾动作，便于脱离 AppHandle 测试。
+///
+/// 调用前现有连接池必须已关闭。`open` 打开（并 migrate）`live.db_path` 处的库，成功导入和
+/// 失败后重开旧库都用它；`finish` 是新库就位后最后一个可能失败的步骤（设置落盘），
+/// 它失败同样整体回滚。
+async fn swap_live_data<T, Open, OpenFut, Finish>(
+    live: &LiveDataPaths,
+    db_src: &Path,
+    resources_src: Option<&Path>,
+    open: Open,
+    finish: Finish,
+) -> SwapOutcome<T>
+where
+    Open: Fn() -> OpenFut,
+    OpenFut: std::future::Future<Output = Result<SqlitePool>>,
+    Finish: FnOnce() -> Result<T>,
+{
+    let mut rollback = match OverwriteRollback::create(live) {
+        Ok(rollback) => rollback,
+        Err(err) => {
+            return SwapOutcome {
+                pool: open().await,
+                result: Err(err),
+            };
+        }
+    };
+
+    let import_err = match rollback.swap_in(live, db_src, resources_src) {
+        Err(err) => err,
+        Ok(()) => match open().await {
+            Err(err) => err,
+            Ok(pool) => match finish() {
+                Ok(value) => {
+                    rollback.commit();
+                    return SwapOutcome {
+                        pool: Ok(pool),
+                        result: Ok(value),
+                    };
+                }
+                Err(err) => {
+                    pool.close().await;
+                    err
+                }
+            },
+        },
+    };
+    log::error!("backup overwrite import failed, rolling back: {import_err:?}");
+
+    let result = match restore_with_retry(&mut rollback).await {
+        Ok(()) => Err(rolled_back_error(&import_err)),
+        Err(restore_err) => {
+            let kept = rollback.keep();
+            log::error!(
+                "backup overwrite rollback failed, original data kept at {kept:?}: {restore_err:?}"
+            );
+            app_error(format!(
+                "导入失败且未能自动恢复原数据，导入前的数据保存在 {}",
+                kept.map(|path| path.display().to_string())
+                    .unwrap_or_default()
+            ))
+        }
+    };
+
+    SwapOutcome {
+        pool: open().await,
+        result,
+    }
+}
+
+/// Windows 上刚关闭的连接可能还占着文件句柄，恢复失败时短暂等待后重试。
+async fn restore_with_retry(rollback: &mut OverwriteRollback) -> Result<()> {
+    let mut attempt = 0;
+    loop {
+        match rollback.restore() {
+            Ok(()) => return Ok(()),
+            Err(err) if attempt < RESTORE_RETRY_DELAYS.len() => {
+                log::warn!("restore backup import rollback failed, retrying: {err:?}");
+                tokio::time::sleep(RESTORE_RETRY_DELAYS[attempt]).await;
+                attempt += 1;
+            }
+            Err(err) => return Err(err),
+        }
+    }
+}
+
+/// 已回滚的导入错误：告诉用户数据没动，并带上底层根因（如磁盘已满、文件被占用）。
+fn rolled_back_error(err: &AppError) -> AppError {
+    let cause = match err {
+        AppError::Other(err) => err.root_cause().to_string(),
+        other => other.to_string(),
+    };
+
+    AppError::Other(anyhow!("导入未完成，已恢复为导入前的数据（{cause}）"))
+}
+
+/// 只有 `NotFound` 视为不存在；权限等其它错误照常上抛，避免把读不到的现场数据当成空位覆盖。
+fn path_exists(path: &Path) -> Result<bool> {
+    match fs::symlink_metadata(path) {
+        Ok(_) => Ok(true),
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(false),
+        Err(err) => Err(AppError::Other(
+            anyhow!(err).context(format!("failed to inspect {path:?}")),
+        )),
+    }
+}
+
+fn remove_path_if_exists(path: &Path) -> Result<()> {
+    if !path_exists(path)? {
+        return Ok(());
+    }
+    let metadata =
+        fs::symlink_metadata(path).with_context(|| format!("failed to inspect {path:?}"))?;
+    let removed = if metadata.is_dir() {
+        fs::remove_dir_all(path)
+    } else {
+        fs::remove_file(path)
+    };
+    removed.with_context(|| format!("failed to remove {path:?}"))?;
+
+    Ok(())
+}
+
+/// 校验备份库能被本版本打开：只读打开后检查 `_sqlx_migrations`，在动任何现有数据之前拒绝
+/// 来自更新版本或已损坏的备份，避免覆盖导入后每次启动 migration 都失败。
+async fn validate_backup_database(path: &Path) -> Result<()> {
+    let pool = match open_backup_db(path).await {
+        Ok(pool) => pool,
+        Err(err) => {
+            log::warn!("open backup database for validation failed: {err:?}");
+            return app_error(INVALID_BACKUP_DB_MESSAGE);
+        }
+    };
+    let checked = ensure_backup_migrations_known(&pool).await;
+    pool.close().await;
+
+    checked
+}
+
+async fn ensure_backup_migrations_known(pool: &SqlitePool) -> Result<()> {
+    let applied = sqlx::query_as::<_, (i64, bool, Vec<u8>)>(
+        "SELECT version, success, checksum FROM _sqlx_migrations",
+    )
+    .fetch_all(pool)
+    .await;
+
+    match applied {
+        Ok(applied) => check_applied_migrations(&applied),
+        Err(err) => {
+            log::warn!("read backup migrations failed: {err}");
+            app_error(INVALID_BACKUP_DB_MESSAGE)
+        }
+    }
+}
+
+/// 按 sqlx `Migrator::run` 的同一套检查判断：未知版本（VersionMissing）、未完成（Dirty）、
+/// checksum 不符（VersionMismatch）都会让本版本启动失败，一律在导入前拒绝。
+/// 空表同样拒绝——合法备份至少应用过初始 migration。
+fn check_applied_migrations(applied: &[(i64, bool, Vec<u8>)]) -> Result<()> {
+    if applied.is_empty() {
+        return app_error(INVALID_BACKUP_DB_MESSAGE);
+    }
+
+    for (version, success, checksum) in applied {
+        let known = MIGRATOR
+            .iter()
+            .filter(|migration| !migration.migration_type.is_down_migration())
+            .find(|migration| migration.version == *version);
+        let Some(known) = known else {
+            return app_error("备份来自更新版本的 SnipStack，请先升级应用再导入");
+        };
+        if !success || known.checksum.as_ref() != checksum.as_slice() {
+            return app_error(INVALID_BACKUP_DB_MESSAGE);
+        }
+    }
+
+    Ok(())
+}
+
+fn parse_backup_settings(value: serde_json::Value) -> Result<crate::settings::Settings> {
+    serde_json::from_value(value).map_err(|err| {
+        log::warn!("parse backup settings failed: {err}");
+        AppError::Other(anyhow!("备份中的设置文件无效"))
+    })
+}
+
+/// 从备份设置 patch 里剔除本机状态字段（引导进度、更新检查记录、隐藏的管理员运行选项），
+/// 合并导入后这些字段保持本机当前值。键名与 `settings::model` 的 serde camelCase 命名一致。
+fn strip_machine_local_settings(patch: &mut serde_json::Value) {
+    let Some(root) = patch.as_object_mut() else {
+        return;
+    };
+
+    root.remove("onboarding");
+    if let Some(update) = root
+        .get_mut("update")
+        .and_then(serde_json::Value::as_object_mut)
+    {
+        update.remove("lastCheckedAt");
+        update.remove("skippedVersion");
+    }
+    if let Some(general) = root
+        .get_mut("general")
+        .and_then(serde_json::Value::as_object_mut)
+    {
+        general.remove("runAsAdmin");
+    }
+}
+
+/// 覆盖导入的设置：以备份设置为底，本机状态字段取本机当前值，与 [`strip_machine_local_settings`]
+/// 剔除的字段集合保持一致。
+fn overlay_machine_local_settings(
+    mut imported: crate::settings::Settings,
+    current: &crate::settings::Settings,
+) -> crate::settings::Settings {
+    imported.onboarding = current.onboarding.clone();
+    imported.update.last_checked_at = current.update.last_checked_at.clone();
+    imported.update.skipped_version = current.update.skipped_version.clone();
+    imported.general.run_as_admin = current.general.run_as_admin;
+
+    imported
 }
 
 struct MergeOutcome {
@@ -1286,21 +1744,6 @@ fn pause_watcher(app: &AppHandle) -> WatcherPauseRestore {
     }
 }
 
-/// 用备份数据库替换当前主数据库，并移除旧 WAL / SHM sidecar。
-fn replace_live_database(app: &AppHandle, src: &Path) -> Result<()> {
-    let dst = crate::db::db_path(app)?;
-    copy_file_to(src, &dst)?;
-
-    for suffix in ["-wal", "-shm"] {
-        let sidecar = PathBuf::from(format!("{}{suffix}", dst.display()));
-        if sidecar.exists() {
-            fs::remove_file(&sidecar).with_context(|| format!("failed to remove {sidecar:?}"))?;
-        }
-    }
-
-    Ok(())
-}
-
 /// 覆盖导入后从新数据库重建来源应用内存缓存。
 async fn refresh_apps_registry(app: &AppHandle) {
     let Some(registry) = app.try_state::<crate::clipboard::AppsRegistry>() else {
@@ -1387,15 +1830,6 @@ fn copy_dir_missing(src: &Path, dst: &Path) -> Result<u64> {
     }
 
     Ok(copied)
-}
-
-fn replace_dir(src: &Path, dst: &Path) -> Result<()> {
-    if dst.exists() {
-        fs::remove_dir_all(dst).with_context(|| format!("failed to remove {dst:?}"))?;
-    }
-    copy_dir_all(src, dst)?;
-
-    Ok(())
 }
 
 fn emit_clipboard_imported(app: &AppHandle) {
@@ -1568,6 +2002,396 @@ mod tests {
                 "resources/clipboard-images/origin/demo.png",
             ]
         );
+    }
+
+    /// 按生产 `db::init` 的方式打开文件库：WAL、不存在则创建、跑完整 migrations。
+    async fn open_file_db(path: &Path) -> Result<SqlitePool> {
+        let options = SqliteConnectOptions::new()
+            .filename(path)
+            .create_if_missing(true)
+            .journal_mode(SqliteJournalMode::Wal)
+            .foreign_keys(true);
+        let pool = SqlitePoolOptions::new()
+            .connect_with(options)
+            .await
+            .context("failed to open test db")?;
+        MIGRATOR
+            .run(&pool)
+            .await
+            .context("failed to migrate test db")?;
+
+        Ok(pool)
+    }
+
+    async fn insert_marker(pool: &SqlitePool, id: &str) {
+        sqlx::query(
+            "INSERT INTO clipboard_groups (id, name, icon, created_at, updated_at) \
+             VALUES (?, ?, 'icon', '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z')",
+        )
+        .bind(id)
+        .bind(id)
+        .execute(pool)
+        .await
+        .unwrap();
+    }
+
+    async fn marker_ids(pool: &SqlitePool) -> Vec<String> {
+        sqlx::query_scalar("SELECT id FROM clipboard_groups ORDER BY id")
+            .fetch_all(pool)
+            .await
+            .unwrap()
+    }
+
+    /// 建一个带标记行的文件库并关闭，模拟导出后的备份库或关闭连接池后的现场库。
+    async fn create_db_with_marker(path: &Path, id: &str) {
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        let pool = open_file_db(path).await.unwrap();
+        insert_marker(&pool, id).await;
+        pool.close().await;
+    }
+
+    struct OverwriteFixture {
+        _temp: TempDir,
+        root: PathBuf,
+        live: LiveDataPaths,
+        backup_db: PathBuf,
+        backup_resources: PathBuf,
+    }
+
+    async fn overwrite_fixture() -> OverwriteFixture {
+        let temp = tempdir().unwrap();
+        let root = temp.path().join("data");
+        let live = LiveDataPaths {
+            db_path: root.join("db").join(DB_FILENAME),
+            resources_dir: root.join("resources"),
+        };
+        create_db_with_marker(&live.db_path, "old-group").await;
+        fs::create_dir_all(live.resources_dir.join("images")).unwrap();
+        fs::write(live.resources_dir.join("images/old.png"), b"old").unwrap();
+
+        let backup_db = temp.path().join("payload/db").join(DB_FILENAME);
+        create_db_with_marker(&backup_db, "new-group").await;
+        let backup_resources = temp.path().join("payload/resources");
+        fs::create_dir_all(backup_resources.join("images")).unwrap();
+        fs::write(backup_resources.join("images/new.png"), b"new").unwrap();
+
+        OverwriteFixture {
+            _temp: temp,
+            root,
+            live,
+            backup_db,
+            backup_resources,
+        }
+    }
+
+    fn rollback_dirs(root: &Path) -> Vec<PathBuf> {
+        fs::read_dir(root)
+            .unwrap()
+            .filter_map(std::result::Result::ok)
+            .filter(|entry| {
+                entry
+                    .file_name()
+                    .to_string_lossy()
+                    .starts_with(ROLLBACK_DIR_PREFIX)
+            })
+            .map(|entry| entry.path())
+            .collect()
+    }
+
+    async fn assert_live_is_original(fixture: &OverwriteFixture, pool: SqlitePool) {
+        assert_eq!(marker_ids(&pool).await, vec!["old-group".to_owned()]);
+        pool.close().await;
+        assert_eq!(
+            fs::read(fixture.live.resources_dir.join("images/old.png")).unwrap(),
+            b"old"
+        );
+        assert!(!fixture.live.resources_dir.join("images/new.png").exists());
+        assert!(rollback_dirs(&fixture.root).is_empty());
+    }
+
+    #[tokio::test]
+    async fn overwrite_swap_installs_backup_and_removes_rollback_dir() {
+        let fixture = overwrite_fixture().await;
+        let db_path = fixture.live.db_path.clone();
+
+        let outcome = swap_live_data(
+            &fixture.live,
+            &fixture.backup_db,
+            Some(&fixture.backup_resources),
+            || open_file_db(&db_path),
+            || Ok("settings"),
+        )
+        .await;
+
+        assert_eq!(outcome.result.unwrap(), "settings");
+        let pool = outcome.pool.unwrap();
+        assert_eq!(marker_ids(&pool).await, vec!["new-group".to_owned()]);
+        pool.close().await;
+        assert!(fixture.live.resources_dir.join("images/new.png").exists());
+        assert!(!fixture.live.resources_dir.join("images/old.png").exists());
+        assert!(rollback_dirs(&fixture.root).is_empty());
+    }
+
+    #[tokio::test]
+    async fn overwrite_swap_restores_original_when_new_db_cannot_open() {
+        let fixture = overwrite_fixture().await;
+        fs::write(&fixture.backup_db, b"not a sqlite database at all").unwrap();
+        let db_path = fixture.live.db_path.clone();
+
+        let outcome = swap_live_data(
+            &fixture.live,
+            &fixture.backup_db,
+            Some(&fixture.backup_resources),
+            || open_file_db(&db_path),
+            || Ok(()),
+        )
+        .await;
+
+        let message = outcome.result.unwrap_err().to_string();
+        assert!(message.contains("已恢复为导入前的数据"), "{message}");
+        assert_live_is_original(&fixture, outcome.pool.unwrap()).await;
+    }
+
+    #[tokio::test]
+    async fn overwrite_swap_restores_original_when_finish_fails() {
+        let fixture = overwrite_fixture().await;
+        let db_path = fixture.live.db_path.clone();
+
+        let outcome = swap_live_data(
+            &fixture.live,
+            &fixture.backup_db,
+            Some(&fixture.backup_resources),
+            || open_file_db(&db_path),
+            || app_error::<()>("settings write failed"),
+        )
+        .await;
+
+        assert!(outcome.result.is_err());
+        assert_live_is_original(&fixture, outcome.pool.unwrap()).await;
+    }
+
+    #[tokio::test]
+    async fn overwrite_swap_restores_original_when_backup_db_copy_fails() {
+        let fixture = overwrite_fixture().await;
+        let missing = fixture.backup_db.with_file_name("missing.db");
+        let db_path = fixture.live.db_path.clone();
+
+        let outcome = swap_live_data(
+            &fixture.live,
+            &missing,
+            Some(&fixture.backup_resources),
+            || open_file_db(&db_path),
+            || Ok(()),
+        )
+        .await;
+
+        assert!(outcome.result.is_err());
+        assert_live_is_original(&fixture, outcome.pool.unwrap()).await;
+    }
+
+    #[tokio::test]
+    async fn overwrite_swap_ignores_leftover_rollback_dir() {
+        let fixture = overwrite_fixture().await;
+        let leftover = fixture.root.join(format!("{ROLLBACK_DIR_PREFIX}stale"));
+        fs::create_dir_all(&leftover).unwrap();
+        fs::write(leftover.join(DB_FILENAME), b"stale").unwrap();
+        let db_path = fixture.live.db_path.clone();
+
+        let outcome = swap_live_data(
+            &fixture.live,
+            &fixture.backup_db,
+            None,
+            || open_file_db(&db_path),
+            || Ok(()),
+        )
+        .await;
+
+        assert!(outcome.result.is_ok());
+        let pool = outcome.pool.unwrap();
+        assert_eq!(marker_ids(&pool).await, vec!["new-group".to_owned()]);
+        pool.close().await;
+        assert!(
+            fixture.live.resources_dir.join("images/old.png").exists(),
+            "backup without resources keeps current resources"
+        );
+        assert_eq!(rollback_dirs(&fixture.root), vec![leftover]);
+    }
+
+    #[tokio::test]
+    async fn database_state_keeps_usable_pool_after_failed_overwrite() {
+        let fixture = overwrite_fixture().await;
+        let db_path = fixture.live.db_path.clone();
+        let state = crate::db::DatabaseState::new(open_file_db(&db_path).await.unwrap());
+
+        let mut imported = None;
+        let imported_slot = &mut imported;
+        let live = &fixture.live;
+        let backup_db = fixture.backup_db.as_path();
+        let backup_resources = fixture.backup_resources.as_path();
+        let db_path_ref = db_path.as_path();
+        state
+            .close_and_replace(move || async move {
+                let swap = swap_live_data(
+                    live,
+                    backup_db,
+                    Some(backup_resources),
+                    || open_file_db(db_path_ref),
+                    || app_error::<()>("settings write failed"),
+                )
+                .await;
+                *imported_slot = Some(swap.result);
+                swap.pool
+            })
+            .await
+            .unwrap();
+
+        assert!(imported.unwrap().is_err());
+        assert_live_is_original(&fixture, state.pool().await).await;
+    }
+
+    #[tokio::test]
+    async fn backup_db_with_current_migrations_is_accepted() {
+        let temp = tempdir().unwrap();
+        let path = temp.path().join(DB_FILENAME);
+        create_db_with_marker(&path, "group").await;
+
+        validate_backup_database(&path).await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn backup_db_with_unknown_migration_is_rejected() {
+        let temp = tempdir().unwrap();
+        let path = temp.path().join(DB_FILENAME);
+        let pool = open_file_db(&path).await.unwrap();
+        sqlx::query(
+            "INSERT INTO _sqlx_migrations \
+             (version, description, success, checksum, execution_time) \
+             VALUES (99990101000000, 'future', 1, x'00', 0)",
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+        pool.close().await;
+
+        let message = validate_backup_database(&path)
+            .await
+            .unwrap_err()
+            .to_string();
+        assert!(message.contains("请先升级应用"), "{message}");
+    }
+
+    #[tokio::test]
+    async fn backup_db_without_migrations_table_is_rejected() {
+        let temp = tempdir().unwrap();
+        let path = temp.path().join(DB_FILENAME);
+        let options = SqliteConnectOptions::new()
+            .filename(&path)
+            .create_if_missing(true)
+            .journal_mode(SqliteJournalMode::Wal);
+        let pool = SqlitePoolOptions::new()
+            .connect_with(options)
+            .await
+            .unwrap();
+        sqlx::query("CREATE TABLE something (id INTEGER)")
+            .execute(&pool)
+            .await
+            .unwrap();
+        pool.close().await;
+
+        let message = validate_backup_database(&path)
+            .await
+            .unwrap_err()
+            .to_string();
+        assert_eq!(message, INVALID_BACKUP_DB_MESSAGE);
+    }
+
+    #[tokio::test]
+    async fn backup_db_that_is_not_sqlite_is_rejected() {
+        let temp = tempdir().unwrap();
+        let path = temp.path().join(DB_FILENAME);
+        fs::write(&path, b"definitely not sqlite").unwrap();
+
+        let message = validate_backup_database(&path)
+            .await
+            .unwrap_err()
+            .to_string();
+        assert_eq!(message, INVALID_BACKUP_DB_MESSAGE);
+    }
+
+    #[test]
+    fn applied_migrations_check_rejects_empty_dirty_and_mismatched() {
+        let known = MIGRATOR.iter().next().unwrap();
+        let checksum = known.checksum.to_vec();
+
+        assert!(check_applied_migrations(&[(known.version, true, checksum.clone())]).is_ok());
+        assert!(check_applied_migrations(&[]).is_err());
+        assert!(check_applied_migrations(&[(known.version, false, checksum)]).is_err());
+        assert!(check_applied_migrations(&[(known.version, true, vec![0])]).is_err());
+    }
+
+    #[test]
+    fn strip_machine_local_settings_removes_only_local_keys() {
+        let mut patch = serde_json::json!({
+            "general": {"autoStart": true, "runAsAdmin": true},
+            "onboarding": {"completed": true},
+            "update": {
+                "autoCheck": true,
+                "lastCheckedAt": "2026-01-01",
+                "skippedVersion": "9.9.9",
+            },
+            "appearance": {"language": "en-US"},
+        });
+
+        strip_machine_local_settings(&mut patch);
+
+        assert_eq!(
+            patch,
+            serde_json::json!({
+                "general": {"autoStart": true},
+                "update": {"autoCheck": true},
+                "appearance": {"language": "en-US"},
+            })
+        );
+    }
+
+    #[test]
+    fn strip_machine_local_settings_keys_match_settings_model() {
+        let mut settings = crate::settings::Settings::default();
+        settings.general.run_as_admin = true;
+        settings.onboarding.completed = true;
+        settings.update.last_checked_at = Some("2026-01-01".into());
+        settings.update.skipped_version = Some("9.9.9".into());
+        let mut patch = serde_json::to_value(&settings).unwrap();
+
+        strip_machine_local_settings(&mut patch);
+        let parsed: crate::settings::Settings = serde_json::from_value(patch).unwrap();
+
+        assert_eq!(parsed, crate::settings::Settings::default());
+    }
+
+    #[test]
+    fn overlay_machine_local_settings_keeps_current_local_fields() {
+        let mut imported = crate::settings::Settings::default();
+        imported.general.auto_start = true;
+        imported.general.run_as_admin = true;
+        imported.onboarding.completed = false;
+        imported.update.last_checked_at = Some("backup".into());
+        imported.update.skipped_version = Some("backup".into());
+        imported.update.auto_check = true;
+
+        let mut current = crate::settings::Settings::default();
+        current.onboarding.completed = true;
+        current.onboarding.last_step = 3;
+        current.update.last_checked_at = Some("local".into());
+
+        let next = overlay_machine_local_settings(imported, &current);
+
+        assert!(next.general.auto_start);
+        assert!(next.update.auto_check);
+        assert!(!next.general.run_as_admin);
+        assert_eq!(next.onboarding, current.onboarding);
+        assert_eq!(next.update.last_checked_at.as_deref(), Some("local"));
+        assert_eq!(next.update.skipped_version, None);
     }
 
     #[tokio::test]

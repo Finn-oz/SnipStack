@@ -227,6 +227,7 @@ pub fn run() {
                     err
                 })?;
                 handle_db.manage(db::DatabaseState::new(pool));
+                backup::log_rollback_leftovers(&handle_db);
                 clipboard::init(&handle_db)?;
                 Ok::<_, anyhow::Error>(())
             })?;

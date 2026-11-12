@@ -79,28 +79,30 @@ pub async fn update_settings(app: AppHandle, patch: serde_json::Value) -> Result
 pub async fn reset_settings(app: AppHandle) -> Result<Settings> {
     let next = app.state::<SettingsStore>().reset()?;
 
-    apply_reset_side_effects(&app, &next);
+    apply_settings_side_effects(&app, &next);
     emit_settings_updated(&app, &next);
 
     Ok(next)
 }
 
-/// 重置后按默认设置同步系统级副作用，失败只记日志，不回滚已落盘设置。
-fn apply_reset_side_effects(app: &AppHandle, settings: &Settings) {
+/// 整体替换设置（重置默认、导入备份）后，按完整设置同步全部系统级副作用：
+/// 开机自启、全局快捷键、托盘、任务栏图标、管理员计划任务。
+/// 失败只记日志，不回滚已落盘设置。
+pub(crate) fn apply_settings_side_effects(app: &AppHandle, settings: &Settings) {
     if let Err(err) = autostart::set_enabled(app, settings.general.auto_start) {
-        log::warn!("reset autostart failed: {err}");
+        log::warn!("apply autostart from settings failed: {err}");
     }
 
     if let Err(err) = shortcut::apply(app, &settings.shortcuts) {
-        log::warn!("reset shortcuts failed: {err}");
+        log::warn!("apply shortcuts from settings failed: {err}");
     }
 
     if let Err(err) = tray::apply(app, settings) {
-        log::warn!("reset tray failed: {err}");
+        log::warn!("apply tray from settings failed: {err}");
     }
 
     if let Err(err) = window::show_taskbar_icon(app, settings.general.dock_icon) {
-        log::warn!("reset taskbar icon failed: {err}");
+        log::warn!("apply taskbar icon from settings failed: {err}");
     }
 
     admin::sync_scheduled_task(settings.general.run_as_admin);

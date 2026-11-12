@@ -184,6 +184,18 @@ async fn switch_storage_location(
         crate::core::paths::validate_storage_target(&target)?;
     }
 
+    // 回落运行（manifest 指向的目录启动时不可达，本次运行改用了默认目录）里选中一个
+    // 已有数据的 SnipStack 目录：那里是用户完整的历史，`current` 里只有回落期间的零星
+    // 数据——直接接回，不做复制；按常规迁移走会拿后者替换前者。
+    // 判定看目标里有没有数据而不是比较路径：U 盘换了盘符、改用映射盘或大小写不同的写法
+    // 都还是同一份数据；反过来路径相同但目录是空的（盘没插时被新建出来）就不该接回。
+    let configured_before = crate::core::paths::configured_data_dir(&app);
+    let fallback_run = configured_before.as_deref() != Some(current.as_path());
+    let adopting = fallback_run && crate::core::paths::is_populated_data_dir(&target);
+    if adopting {
+        log::info!("storage switch adopts existing data dir {target:?} without copying");
+    }
+
     let _pause_guard = pause_watcher(&app);
 
     // 窗口几何落盘是异步的(见 WindowStateStore);必须在复制目录前同步刷完,
@@ -198,29 +210,49 @@ async fn switch_storage_location(
     let app_for_db = app.clone();
     let current_for_db = current.clone();
     let target_for_db = target.clone();
+    let configured_for_db = configured_before.clone();
 
     db.close_and_replace(|| async move {
+        // 复制完成后才登记：之后任何一步失败都要把目标恢复成复制前的样子。
+        // 复制自己失败时它已经恢复过，不能再恢复第二次。
+        let mut copied: Option<Option<PathBuf>> = None;
         let switch_result = (|| -> Result<()> {
-            copy_storage_data(&current_for_db, &target_for_db)?;
+            if !adopting {
+                copied = Some(copy_storage_data(&current_for_db, &target_for_db)?);
+            }
             crate::core::paths::set_app_data_dir(&app_for_db, target_for_db.clone())?;
             Ok(())
         })();
 
         if let Err(err) = switch_result {
+            if let Some(set_aside) = copied.take() {
+                undo_storage_copy(&target_for_db, set_aside.as_deref());
+            }
             *switch_error_for_task
                 .lock()
                 .expect("storage switch error poisoned") = Some(err.to_string());
-            crate::core::paths::set_app_data_dir(&app_for_db, current_for_db.clone())?;
+            crate::core::paths::restore_data_dir(
+                &app_for_db,
+                configured_for_db,
+                current_for_db.clone(),
+            )?;
             return crate::db::init(&app_for_db).await;
         }
 
         match crate::db::init(&app_for_db).await {
             Ok(pool) => Ok(pool),
             Err(err) => {
+                if let Some(set_aside) = copied.take() {
+                    undo_storage_copy(&target_for_db, set_aside.as_deref());
+                }
                 *switch_error_for_task
                     .lock()
                     .expect("storage switch error poisoned") = Some(err.to_string());
-                crate::core::paths::set_app_data_dir(&app_for_db, current_for_db.clone())?;
+                crate::core::paths::restore_data_dir(
+                    &app_for_db,
+                    configured_for_db,
+                    current_for_db.clone(),
+                )?;
                 crate::db::init(&app_for_db).await
             }
         }
@@ -238,8 +270,17 @@ async fn switch_storage_location(
     let settings = rebase_storage_states(&app).await?;
     // 走到这里切换已经生效。旧目录删不干净（被资源管理器打开、图片被其他程序占用）
     // 只是残留占盘，不能让命令报失败——前端会以为没切成，后面的刷新事件也发不出去。
-    if let Err(err) = remove_old_storage_data(&app, &current) {
-        log::warn!("remove old data dir {current:?} after storage switch failed: {err}");
+    if adopting {
+        // 回落运行启动时读到的是默认目录里的设置，系统级的快捷键、自启、托盘都是按它
+        // 注册的；接回后内存里换成了用户真实的设置，要重新应用一遍才一致。
+        crate::commands::apply_settings_side_effects(&app, &settings);
+    }
+
+    // 接回原目录时旧目录（默认目录）里是回落期间新记录的内容，没有被复制走，不能删。
+    if !adopting {
+        if let Err(err) = remove_old_storage_data(&app, &current) {
+            log::warn!("remove old data dir {current:?} after storage switch failed: {err}");
+        }
     }
     emit_settings_updated(&app, &settings);
     emit_clipboard_imported(&app);
@@ -258,16 +299,111 @@ fn reject_nested_storage_move(current: &Path, target: &Path) -> Result<()> {
     Ok(())
 }
 
-fn copy_storage_data(src: &Path, dst: &Path) -> Result<()> {
+/// 把数据从 `src` 复制进 `dst`，返回 `dst` 里原有数据被挪到的位置（原本没有数据时为
+/// `None`）。`dst` 里已有的数据不删除，先整体挪到旁边
+/// （见 [`set_aside_existing_storage_data`]）；复制中途失败时由 [`undo_storage_copy`]
+/// 把 `dst` 恢复成调用前的样子——否则目标会停在「非空却没有 identity」的状态，
+/// 之后再选同一位置会被目标校验永久拒绝。
+fn copy_storage_data(src: &Path, dst: &Path) -> Result<Option<PathBuf>> {
     fs::create_dir_all(dst).with_context(|| format!("failed to create storage dir {dst:?}"))?;
-    for name in STORAGE_CONTENT_DIRS {
-        replace_path(&src.join(name), &dst.join(name))?;
+    let set_aside = set_aside_existing_storage_data(dst)?;
+
+    let copied = STORAGE_CONTENT_DIRS
+        .iter()
+        .try_for_each(|name| copy_path(&src.join(name), &dst.join(name)))
+        .and_then(|()| crate::core::paths::write_storage_identity(dst));
+    if let Err(err) = copied {
+        undo_storage_copy(dst, set_aside.as_deref());
+        return Err(err);
     }
-    crate::core::paths::write_storage_identity(dst)?;
-    Ok(())
+
+    Ok(set_aside)
+}
+
+/// 撤销一次 [`copy_storage_data`]：删掉复制进 `dst` 的内容，再把挪到 `set_aside` 的原有
+/// 数据挪回原位。尽力而为，单步失败只记日志——此时原有数据仍完整留在 `set_aside` 里。
+///
+/// 只能对「刚被复制过」的 `dst` 调用一次：它会删除 `dst` 下的内容目录，对已经恢复过的
+/// 目标再调用一次就会删掉刚挪回去的原有数据。
+fn undo_storage_copy(dst: &Path, set_aside: Option<&Path>) {
+    for name in STORAGE_CONTENT_DIRS {
+        let copied = dst.join(name);
+        if !copied.exists() {
+            continue;
+        }
+        if let Err(err) = remove_path(&copied) {
+            log::warn!("remove copied storage data {copied:?} failed: {err}");
+        }
+    }
+
+    let Some(aside) = set_aside else {
+        return;
+    };
+    restore_set_aside_storage_data(aside, dst);
+}
+
+/// 把 `aside` 里的内容目录挪回 `dst`，挪空后删掉 `aside`。挪不回去的留在原处并记日志。
+fn restore_set_aside_storage_data(aside: &Path, dst: &Path) {
+    for name in STORAGE_CONTENT_DIRS {
+        let kept = aside.join(name);
+        if !kept.exists() {
+            continue;
+        }
+        if let Err(err) = fs::rename(&kept, dst.join(name)) {
+            log::warn!("restore set-aside storage data {kept:?} failed: {err}");
+        }
+    }
+    let _ = fs::remove_dir(aside);
+}
+
+/// 目标目录里已经有数据时，把它整体挪到同级的 `<目录名>.replaced-<unix 秒>`，
+/// 返回挪到的位置；目标里没有数据时返回 `None`。
+///
+/// 迁移只负责把当前数据搬过去，无从判断目标里原有的数据是否还有用（另一台电脑的
+/// 数据目录、以前用过的目录）。删除不可挽回，挪到旁边最坏只是多占磁盘。
+fn set_aside_existing_storage_data(dst: &Path) -> Result<Option<PathBuf>> {
+    let existing: Vec<&str> = STORAGE_CONTENT_DIRS
+        .iter()
+        .copied()
+        .filter(|name| dst.join(name).exists())
+        .collect();
+    if existing.is_empty() {
+        return Ok(None);
+    }
+
+    let stamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|elapsed| elapsed.as_secs())
+        .unwrap_or_default();
+    let mut aside_name = dst.file_name().unwrap_or_default().to_os_string();
+    aside_name.push(format!(".replaced-{stamp}"));
+    let aside = dst.with_file_name(aside_name);
+
+    fs::create_dir_all(&aside).with_context(|| format!("failed to create {aside:?}"))?;
+    for name in existing {
+        let from = dst.join(name);
+        if let Err(err) = fs::rename(&from, aside.join(name)) {
+            // 挪到一半失败（目录被资源管理器、杀软或索引器占用）：把已经挪走的挪回去，
+            // 否则目标停在「一部分在原处、一部分在旁边」的状态。
+            restore_set_aside_storage_data(&aside, dst);
+            return Err(anyhow::Error::new(err)
+                .context(format!("failed to set aside existing data {from:?}"))
+                .into());
+        }
+    }
+    log::warn!("storage target {dst:?} already had data; kept it at {aside:?}");
+
+    Ok(Some(aside))
 }
 
 fn remove_old_storage_data(app: &AppHandle, old: &Path) -> Result<()> {
+    // 覆盖导入中途被打断时，导入前的原数据留在数据根下的回滚目录里，那可能是用户
+    // 唯一的一份历史。它不属于迁移复制的范围，旧目录里只要还有它就整个保留不删。
+    if has_import_rollback_leftover(old) {
+        log::warn!("old data dir {old:?} holds an import rollback copy; kept it in place");
+        return Ok(());
+    }
+
     let default = crate::core::paths::default_data_dir(app)?;
     if old == default {
         remove_bootstrap_storage_payload(old)?;
@@ -277,6 +413,21 @@ fn remove_old_storage_data(app: &AppHandle, old: &Path) -> Result<()> {
     remove_custom_storage_root(old)?;
 
     Ok(())
+}
+
+/// 目录下是否残留覆盖导入的回滚副本（见 `backup` 模块的 `ROLLBACK_DIR_PREFIX`）。
+/// 目录读不了时按「没有」处理，交给后面的删除步骤照常报错。
+fn has_import_rollback_leftover(dir: &Path) -> bool {
+    let Ok(entries) = fs::read_dir(dir) else {
+        return false;
+    };
+
+    entries.flatten().any(|entry| {
+        entry
+            .file_name()
+            .to_str()
+            .is_some_and(|name| name.starts_with(crate::backup::ROLLBACK_DIR_PREFIX))
+    })
 }
 
 fn remove_custom_storage_root(old: &Path) -> Result<()> {
@@ -321,11 +472,8 @@ fn remove_bootstrap_storage_payload(dir: &Path) -> Result<()> {
     Ok(())
 }
 
-fn replace_path(src: &Path, dst: &Path) -> Result<()> {
-    if dst.exists() {
-        remove_path(dst)?;
-    }
-
+/// 把 `src`（文件或目录）复制到尚不存在的 `dst`；`src` 不存在时什么都不做。
+fn copy_path(src: &Path, dst: &Path) -> Result<()> {
     if !src.exists() {
         return Ok(());
     }
@@ -617,6 +765,90 @@ mod tests {
         fn drop(&mut self) {
             fs::remove_dir_all(&self.0).ok();
         }
+    }
+
+    #[test]
+    fn copy_storage_data_keeps_existing_target_data_aside() {
+        let temp = TempDir::new();
+        let src = temp.path().join("src");
+        let dst = temp.path().join("dst");
+        fs::create_dir_all(src.join("db")).unwrap();
+        fs::write(src.join("db").join("clipboard.db"), b"new").unwrap();
+        fs::create_dir_all(dst.join("db")).unwrap();
+        fs::write(dst.join("db").join("clipboard.db"), b"old history").unwrap();
+
+        copy_storage_data(&src, &dst).unwrap();
+
+        assert_eq!(
+            fs::read(dst.join("db").join("clipboard.db")).unwrap(),
+            b"new"
+        );
+        let aside: Vec<PathBuf> = fs::read_dir(temp.path())
+            .unwrap()
+            .map(|entry| entry.unwrap().path())
+            .filter(|path| {
+                path.file_name()
+                    .and_then(|name| name.to_str())
+                    .is_some_and(|name| name.starts_with("dst.replaced-"))
+            })
+            .collect();
+        assert_eq!(aside.len(), 1);
+        assert_eq!(
+            fs::read(aside[0].join("db").join("clipboard.db")).unwrap(),
+            b"old history"
+        );
+    }
+
+    #[test]
+    fn undo_storage_copy_restores_target_to_its_previous_content() {
+        let temp = TempDir::new();
+        let src = temp.path().join("src");
+        let dst = temp.path().join("dst");
+        fs::create_dir_all(src.join("db")).unwrap();
+        fs::write(src.join("db").join("clipboard.db"), b"new").unwrap();
+        fs::create_dir_all(dst.join("db")).unwrap();
+        fs::write(dst.join("db").join("clipboard.db"), b"old history").unwrap();
+
+        let set_aside = copy_storage_data(&src, &dst).unwrap();
+        undo_storage_copy(&dst, set_aside.as_deref());
+
+        assert_eq!(
+            fs::read(dst.join("db").join("clipboard.db")).unwrap(),
+            b"old history"
+        );
+        assert!(!set_aside.unwrap().exists());
+    }
+
+    #[test]
+    fn undo_storage_copy_empties_a_previously_empty_target() {
+        let temp = TempDir::new();
+        let src = temp.path().join("src");
+        let dst = temp.path().join("dst");
+        fs::create_dir_all(src.join("db")).unwrap();
+        fs::write(src.join("db").join("clipboard.db"), b"new").unwrap();
+
+        let set_aside = copy_storage_data(&src, &dst).unwrap();
+        assert!(set_aside.is_none());
+        undo_storage_copy(&dst, None);
+
+        assert!(!dst.join("db").exists());
+    }
+
+    #[test]
+    fn copy_storage_data_into_empty_target_sets_nothing_aside() {
+        let temp = TempDir::new();
+        let src = temp.path().join("src");
+        let dst = temp.path().join("dst");
+        fs::create_dir_all(src.join("config")).unwrap();
+        fs::write(src.join("config").join("settings.json"), b"{}").unwrap();
+
+        copy_storage_data(&src, &dst).unwrap();
+
+        assert_eq!(
+            fs::read(dst.join("config").join("settings.json")).unwrap(),
+            b"{}"
+        );
+        assert_eq!(fs::read_dir(temp.path()).unwrap().count(), 2);
     }
 
     #[test]

@@ -42,6 +42,28 @@ clipboard-manager codebase, see the upstream changelog.
 - Changing the data directory no longer reports failure when the switch succeeded
   but the old directory could not be fully removed.
 - An extremely large retention value no longer disables the cleanup task.
+- When a custom data directory is temporarily unavailable (USB drive unplugged,
+  network or late-mounted volume not ready yet), the default directory is used for
+  that run only instead of permanently resetting the configuration; the custom
+  directory is picked up again on the next start once it is back. Previously,
+  re-selecting the original directory in that state replaced its history with
+  nearly empty data.
+- Changing the data directory no longer deletes SnipStack data already present at the
+  target; it is kept next to it in a `*.replaced-*` folder, and a copy that fails
+  midway leaves the target as it was.
+- An overwrite import that fails midway now restores the database, images and
+  settings to their state before the import, instead of leaving damaged history or
+  a database connection that only recovers after a restart.
+- Importing a backup exported by a newer SnipStack version is now refused with a
+  notice before any existing data is touched; previously it could leave the app
+  unable to start.
+- After importing a backup, shortcuts, launch-at-startup and tray settings take
+  effect immediately, and state that belongs to the original computer (onboarding
+  progress, update-check records) is no longer carried over.
+- While a delete / clear confirmation is open, Enter and Esc now act on the
+  confirmation instead of pasting the selected item or hiding the panel.
+- Checking for updates again after an update was downloaded no longer discards the
+  downloaded installer.
 - The "Snip → Save to History" description now matches the behavior (only the
   recognized text is saved).
 

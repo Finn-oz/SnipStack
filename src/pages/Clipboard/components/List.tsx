@@ -66,6 +66,13 @@ import NoteModal from "./NoteModal";
 /** 前 10 项的快捷键：index 0-8 对应 1-9，index 9 对应 0 */
 const KEY_HINTS = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "0"];
 
+/** antd 弹窗里代表「确认」的按钮：确认框的主按钮，或普通弹窗页脚的主按钮。 */
+const MODAL_CONFIRM_SELECTOR =
+  ".ant-modal-confirm-btns .ant-btn-primary, .ant-modal-footer .ant-btn-primary";
+/** antd 弹窗里代表「取消」的控件：确认框的非主按钮，或普通弹窗右上角的关闭按钮。 */
+const MODAL_CANCEL_SELECTOR =
+  ".ant-modal-confirm-btns .ant-btn:not(.ant-btn-primary), .ant-modal-close";
+
 interface ClipboardUpdatedPayload {
   cleanup?: number;
   deduplicated?: boolean;
@@ -624,6 +631,25 @@ const List: FC = () => {
     const eventModifierPressed = isMac ? event.metaKey : event.ctrlKey;
 
     setIsModifierPressed(eventModifierPressed);
+
+    const openModal = findOpenModal();
+    if (openModal) {
+      // 弹窗（删除 / 清空确认等）打开期间，按键属于弹窗而不是列表：否则 Enter 会把
+      // 选中条目粘贴出去、Esc 会隐藏面板，确认框却还留在那里。
+      // 面板在 Windows 上不可聚焦，按键由全局钩子转发成合成事件，弹窗自身收不到，
+      // 所以这里替它响应 Enter / Esc；原生按键（isTrusted）已由弹窗内的焦点处理。
+      if (event.isTrusted) return;
+
+      if (event.key === "Enter") {
+        event.preventDefault();
+        openModal.querySelector<HTMLElement>(MODAL_CONFIRM_SELECTOR)?.click();
+      } else if (event.key === "Escape") {
+        event.preventDefault();
+        openModal.querySelector<HTMLElement>(MODAL_CANCEL_SELECTOR)?.click();
+      }
+
+      return;
+    }
 
     if (event.key === "Escape") {
       event.preventDefault();
@@ -1376,6 +1402,20 @@ function getSelectedIdAfterDelete(
 /**
  * 判断 Cmd/Ctrl+C 是否应交给浏览器原生复制，避免覆盖输入框或文本选区复制。
  */
+/**
+ * 返回当前打开着的 antd 弹窗容器；没有弹窗时返回 null。
+ * 关闭后保留在 DOM 里的弹窗容器是 `display: none`，要排除。
+ */
+function findOpenModal(): HTMLElement | null {
+  const wraps = document.querySelectorAll<HTMLElement>(".ant-modal-wrap");
+
+  for (const wrap of wraps) {
+    if (wrap.style.display !== "none") return wrap;
+  }
+
+  return null;
+}
+
 function shouldUseNativeCopy(event: KeyboardEvent) {
   const target = event.target;
   if (target instanceof HTMLElement) {
