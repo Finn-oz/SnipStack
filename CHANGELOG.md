@@ -8,6 +8,8 @@ clipboard-manager codebase, see the upstream changelog.
 
 ## [Unreleased]
 
+## [0.1.6] - 2026-11-13
+
 ### Fixed
 
 - Saving settings no longer blocks readers of the settings. Previously, on a slow

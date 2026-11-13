@@ -7,6 +7,8 @@ SnipStack 是 [EcoPaste](https://github.com/EcoPasteHub/EcoPaste) 的硬分叉
 
 ## [Unreleased]
 
+## [0.1.6] - 2026-11-13
+
 ### 修复
 
 - 设置写盘不再阻塞读取设置的一方:此前磁盘缓慢(杀毒扫描、云同步、硬件异常)时,
